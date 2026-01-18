@@ -38,7 +38,7 @@ func DefaultKeyMap() KeyMap {
 		),
 		Tab: key.NewBinding(
 			key.WithKeys("tab"),
-			key.WithHelp("tab", "switch builds/releases"),
+			key.WithHelp("tab", "switch section"),
 		),
 		Enter: key.NewBinding(
 			key.WithKeys("enter"),

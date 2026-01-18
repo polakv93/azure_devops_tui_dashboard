@@ -151,6 +151,32 @@ func (m Model) HasData() bool {
 	return false
 }
 
+// hasBuildData returns true if build data is available for the current project
+func (m Model) hasBuildData() bool {
+	project := m.CurrentProject().Name
+	builds, ok := m.builds[project]
+	return ok && len(builds) > 0
+}
+
+// hasReleaseData returns true if release data is available for the current project
+func (m Model) hasReleaseData() bool {
+	project := m.CurrentProject().Name
+	releases, ok := m.releases[project]
+	return ok && len(releases) > 0
+}
+
+// getBuildError returns the build error for the current project if any
+func (m Model) getBuildError() error {
+	project := m.CurrentProject().Name
+	return m.errors[project+"-builds"]
+}
+
+// getReleaseError returns the release error for the current project if any
+func (m Model) getReleaseError() error {
+	project := m.CurrentProject().Name
+	return m.errors[project+"-releases"]
+}
+
 // CurrentError returns the error for the current project/tab if any
 func (m Model) CurrentError() error {
 	project := m.CurrentProject().Name

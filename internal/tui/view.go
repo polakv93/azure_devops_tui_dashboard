@@ -21,30 +21,38 @@ func (m Model) View() string {
 	b.WriteString(styles.TitleStyle.Render("Azure DevOps Dashboard"))
 	b.WriteString("\n\n")
 
-	// Tabs (Builds / Releases)
-	b.WriteString(m.renderTabs())
-	b.WriteString("\n")
-
 	// Project tabs
 	b.WriteString(m.renderProjectTabs())
 	b.WriteString("\n\n")
 
-	// Content area
-	// Show error only if there's an error and no data to display
-	if err := m.CurrentError(); err != nil && !m.HasData() {
-		b.WriteString(styles.ErrorStyle.Render(fmt.Sprintf("Error: %v", err)))
-	} else if m.IsLoading() && !m.HasData() {
-		// Show spinner only during initial loading (when no data is available yet)
+	// Builds section
+	b.WriteString(m.renderSectionHeader("Builds", m.activeTab == TabBuilds))
+	b.WriteString("\n")
+	if m.hasBuildData() {
+		b.WriteString(m.renderBuildsTable())
+	} else if m.loadingBuilds[m.CurrentProject().Name] {
 		b.WriteString(m.spinner.View())
-		b.WriteString(" Loading...")
+		b.WriteString(" Loading builds...")
+	} else if err := m.getBuildError(); err != nil {
+		b.WriteString(styles.ErrorStyle.Render(fmt.Sprintf("Error: %v", err)))
 	} else {
-		// Always show data if available (even during background refresh)
-		switch m.activeTab {
-		case TabBuilds:
-			b.WriteString(m.renderBuildsTable())
-		case TabReleases:
-			b.WriteString(m.renderReleasesTable())
-		}
+		b.WriteString(styles.HelpStyle.Render("No builds found"))
+	}
+
+	b.WriteString("\n\n")
+
+	// Releases section
+	b.WriteString(m.renderSectionHeader("Releases", m.activeTab == TabReleases))
+	b.WriteString("\n")
+	if m.hasReleaseData() {
+		b.WriteString(m.renderReleasesTable())
+	} else if m.loadingReleases[m.CurrentProject().Name] {
+		b.WriteString(m.spinner.View())
+		b.WriteString(" Loading releases...")
+	} else if err := m.getReleaseError(); err != nil {
+		b.WriteString(styles.ErrorStyle.Render(fmt.Sprintf("Error: %v", err)))
+	} else {
+		b.WriteString(styles.HelpStyle.Render("No releases found"))
 	}
 
 	// Status bar
@@ -58,20 +66,12 @@ func (m Model) View() string {
 	return b.String()
 }
 
-// renderTabs renders the main tabs (Builds/Releases)
-func (m Model) renderTabs() string {
-	buildsTab := "Builds"
-	releasesTab := "Releases"
-
-	if m.activeTab == TabBuilds {
-		buildsTab = styles.ActiveTabStyle.Render(buildsTab)
-		releasesTab = styles.TabStyle.Render(releasesTab)
-	} else {
-		buildsTab = styles.TabStyle.Render(buildsTab)
-		releasesTab = styles.ActiveTabStyle.Render(releasesTab)
+// renderSectionHeader renders a section header with active indicator
+func (m Model) renderSectionHeader(title string, isActive bool) string {
+	if isActive {
+		return styles.ActiveTabStyle.Render("► " + title)
 	}
-
-	return lipgloss.JoinHorizontal(lipgloss.Top, buildsTab, " ", releasesTab)
+	return styles.TabStyle.Render("  " + title)
 }
 
 // renderProjectTabs renders the project selection tabs
@@ -97,29 +97,41 @@ func (m Model) renderBuildsTable() string {
 		return styles.HelpStyle.Render("No builds found")
 	}
 
+	// Calculate dynamic column widths based on screen width
+	// Fixed columns: Status(12), Result(12), Duration(10) = 34
+	// Variable columns: Pipeline, Branch
+	fixedWidth := 12 + 12 + 10 + 4 // +4 for spacing
+	availableWidth := m.width - fixedWidth
+	if availableWidth < 40 {
+		availableWidth = 40
+	}
+	pipelineWidth := availableWidth * 55 / 100 // 55% for pipeline
+	branchWidth := availableWidth - pipelineWidth // rest for branch
+
 	var b strings.Builder
 
 	// Header
-	header := fmt.Sprintf("%-30s %-20s %-15s %-12s %-10s",
-		"Pipeline", "Branch", "Status", "Result", "Duration")
+	headerFmt := fmt.Sprintf("%%-%ds %%-%ds %%-12s %%-12s %%-10s", pipelineWidth, branchWidth)
+	header := fmt.Sprintf(headerFmt, "Pipeline", "Branch", "Status", "Result", "Duration")
 	b.WriteString(styles.TableHeaderStyle.Render(header))
 	b.WriteString("\n")
 
 	// Rows
 	for i, build := range builds {
-		pipeline := truncate(build.Definition.Name, 28)
-		branch := truncate(build.GetBranchName(), 18)
+		pipeline := truncate(build.Definition.Name, pipelineWidth-2)
+		branch := truncate(build.GetBranchName(), branchWidth-2)
 		status := string(build.Status)
 		result := string(build.Result)
 		duration := formatDuration(build.GetDuration())
 
-		statusDisplay := styles.GetStatusStyle(status).Render(status)
-		resultDisplay := styles.GetStatusStyle(result).Render(result)
+		statusDisplay := styles.GetStatusStyle(status).Render(fmt.Sprintf("%-12s", status))
+		resultDisplay := styles.GetStatusStyle(result).Render(fmt.Sprintf("%-12s", result))
 
-		row := fmt.Sprintf("%-30s %-20s %-15s %-12s %-10s",
-			pipeline, branch, statusDisplay, resultDisplay, duration)
+		rowFmt := fmt.Sprintf("%%-%ds %%-%ds %%s %%s %%-10s", pipelineWidth, branchWidth)
+		row := fmt.Sprintf(rowFmt, pipeline, branch, statusDisplay, resultDisplay, duration)
 
-		if i == m.selectedRow {
+		// Only show selection if Builds section is active
+		if i == m.selectedRow && m.activeTab == TabBuilds {
 			row = styles.SelectedRowStyle.Render(row)
 		}
 
@@ -137,27 +149,40 @@ func (m Model) renderReleasesTable() string {
 		return styles.HelpStyle.Render("No releases found")
 	}
 
+	// Calculate dynamic column widths based on screen width
+	// Fixed columns: Status(12) = 12
+	// Variable columns: Release, Definition, Environments
+	fixedWidth := 12 + 3 // +3 for spacing
+	availableWidth := m.width - fixedWidth
+	if availableWidth < 60 {
+		availableWidth = 60
+	}
+	releaseWidth := availableWidth * 20 / 100      // 20% for release name
+	definitionWidth := availableWidth * 25 / 100  // 25% for definition
+	environmentsWidth := availableWidth - releaseWidth - definitionWidth // rest for environments
+
 	var b strings.Builder
 
 	// Header
-	header := fmt.Sprintf("%-25s %-25s %-12s %-40s",
-		"Release", "Definition", "Status", "Environments")
+	headerFmt := fmt.Sprintf("%%-%ds %%-%ds %%-12s %%-%ds", releaseWidth, definitionWidth, environmentsWidth)
+	header := fmt.Sprintf(headerFmt, "Release", "Definition", "Status", "Environments")
 	b.WriteString(styles.TableHeaderStyle.Render(header))
 	b.WriteString("\n")
 
 	// Rows
 	for i, release := range releases {
-		name := truncate(release.Name, 23)
-		definition := truncate(release.ReleaseDefinition.Name, 23)
+		name := truncate(release.Name, releaseWidth-2)
+		definition := truncate(release.ReleaseDefinition.Name, definitionWidth-2)
 		status := string(release.Status)
-		environments := truncate(release.GetEnvironmentSummary(), 38)
+		environments := truncate(release.GetEnvironmentSummary(), environmentsWidth-2)
 
-		statusDisplay := styles.GetStatusStyle(status).Render(status)
+		statusDisplay := styles.GetStatusStyle(status).Render(fmt.Sprintf("%-12s", status))
 
-		row := fmt.Sprintf("%-25s %-25s %-12s %-40s",
-			name, definition, statusDisplay, environments)
+		rowFmt := fmt.Sprintf("%%-%ds %%-%ds %%s %%-%ds", releaseWidth, definitionWidth, environmentsWidth)
+		row := fmt.Sprintf(rowFmt, name, definition, statusDisplay, environments)
 
-		if i == m.selectedRow {
+		// Only show selection if Releases section is active
+		if i == m.selectedRow && m.activeTab == TabReleases {
 			row = styles.SelectedRowStyle.Render(row)
 		}
 
