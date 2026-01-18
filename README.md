@@ -14,11 +14,19 @@ A terminal-based dashboard for monitoring Azure DevOps builds and releases.
 
 ## Installation
 
+### Using Go Install
+
+```bash
+go install github.com/polakv93/azure_devops_tui_dashboard/cmd/azdo-tui@latest
+```
+
+This will install the binary to your `$GOPATH/bin` directory (or `$HOME/go/bin` if `GOPATH` is not set).
+
 ### From Source
 
 ```bash
 # Clone the repository
-git clone https://github.com/polakj/azure_devops_tui_dashboard.git
+git clone https://github.com/polakv93/azure_devops_tui_dashboard.git
 cd azure_devops_tui_dashboard
 
 # Build
