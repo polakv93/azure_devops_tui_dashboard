@@ -146,6 +146,11 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 
 // handleRefresh triggers a data refresh
 func (m Model) handleRefresh() (tea.Model, tea.Cmd) {
+	// Skip if already loading (prevent multiple queued refreshes)
+	if m.isAnyLoading() {
+		return m, nil
+	}
+
 	// Mark all as loading
 	for _, p := range m.config.Projects {
 		m.loadingBuilds[p.Name] = true
@@ -158,4 +163,19 @@ func (m Model) handleRefresh() (tea.Model, tea.Cmd) {
 		fetchAllData(m.client, m.config.Projects, m.config.Display.MaxItemsPerProject),
 		refreshTicker(m.config.Display.RefreshInterval),
 	)
+}
+
+// isAnyLoading returns true if any project is currently loading data
+func (m Model) isAnyLoading() bool {
+	for _, loading := range m.loadingBuilds {
+		if loading {
+			return true
+		}
+	}
+	for _, loading := range m.loadingReleases {
+		if loading {
+			return true
+		}
+	}
+	return false
 }
