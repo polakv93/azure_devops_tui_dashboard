@@ -137,6 +137,20 @@ func (m Model) IsLoading() bool {
 	return false
 }
 
+// HasData returns true if data is available for the current project and tab
+func (m Model) HasData() bool {
+	project := m.CurrentProject().Name
+	switch m.activeTab {
+	case TabBuilds:
+		builds, ok := m.builds[project]
+		return ok && len(builds) > 0
+	case TabReleases:
+		releases, ok := m.releases[project]
+		return ok && len(releases) > 0
+	}
+	return false
+}
+
 // CurrentError returns the error for the current project/tab if any
 func (m Model) CurrentError() error {
 	project := m.CurrentProject().Name

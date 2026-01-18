@@ -30,12 +30,15 @@ func (m Model) View() string {
 	b.WriteString("\n\n")
 
 	// Content area
-	if m.IsLoading() {
+	// Show error only if there's an error and no data to display
+	if err := m.CurrentError(); err != nil && !m.HasData() {
+		b.WriteString(styles.ErrorStyle.Render(fmt.Sprintf("Error: %v", err)))
+	} else if m.IsLoading() && !m.HasData() {
+		// Show spinner only during initial loading (when no data is available yet)
 		b.WriteString(m.spinner.View())
 		b.WriteString(" Loading...")
-	} else if err := m.CurrentError(); err != nil {
-		b.WriteString(styles.ErrorStyle.Render(fmt.Sprintf("Error: %v", err)))
 	} else {
+		// Always show data if available (even during background refresh)
 		switch m.activeTab {
 		case TabBuilds:
 			b.WriteString(m.renderBuildsTable())

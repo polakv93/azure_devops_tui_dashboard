@@ -101,7 +101,7 @@ func applyDefaults(cfg *Config) {
 	}
 
 	if cfg.Display.DateFormat == "" {
-		cfg.Display.DateFormat = "2006-01-02 15:04"
+		cfg.Display.DateFormat = "2006-01-02 15:04:05"
 	}
 
 	if cfg.RateLimiting.RequestsPerSecond == 0 {
