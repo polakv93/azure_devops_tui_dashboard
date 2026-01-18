@@ -1,0 +1,46 @@
+# Azure DevOps TUI Dashboard Configuration
+
+azure_devops:
+  # Your Azure DevOps organization name
+  organization: "myorg"
+
+  # Base URL for Azure DevOps (default: https://dev.azure.com)
+  base_url: "https://dev.azure.com"
+
+  # Personal Access Token - use environment variable for security
+  # Create a PAT at: https://dev.azure.com/{org}/_usersSettings/tokens
+  # Required scopes: Build (Read), Release (Read)
+  pat: "${AZURE_DEVOPS_PAT}"
+
+projects:
+  # First project configuration
+  - name: "MyProject"
+    # Optional: filter to specific build definition IDs
+    # Leave empty [] to show all builds
+    build_definitions: [1, 5, 12]
+    # Optional: filter to specific release definition IDs
+    # Leave empty [] to show all releases
+    release_definitions: [2, 8]
+
+  # Second project configuration
+  - name: "AnotherProject"
+    # Show all builds and releases (no filtering)
+    build_definitions: []
+    release_definitions: []
+
+display:
+  # How often to refresh data (e.g., 30s, 1m, 5m)
+  refresh_interval: 30s
+
+  # Maximum number of builds/releases to show per project
+  max_items_per_project: 10
+
+  # Date format (Go time format)
+  date_format: "2006-01-02 15:04"
+
+rate_limiting:
+  # Maximum requests per second to Azure DevOps API
+  requests_per_second: 5
+
+  # Burst size for rate limiting
+  burst_size: 10
