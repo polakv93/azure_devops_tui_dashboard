@@ -21,12 +21,19 @@ projects:
     # Optional: filter to specific release definition IDs
     # Leave empty [] to show all releases
     release_definitions: [2, 8]
+    # Optional: filter builds by branch names
+    # Supports both "main" and "refs/heads/main" formats
+    # Leave empty [] to show builds from all branches
+    branches:
+      - main
+      - develop
 
   # Second project configuration
   - name: "AnotherProject"
     # Show all builds and releases (no filtering)
     build_definitions: []
     release_definitions: []
+    branches: []
 
 display:
   # How often to refresh data (e.g., 30s, 1m, 5m)
@@ -36,7 +43,7 @@ display:
   max_items_per_project: 10
 
   # Date format (Go time format)
-  date_format: "2006-01-02 15:04"
+  date_format: "2006-01-02 15:04:05"
 
 rate_limiting:
   # Maximum requests per second to Azure DevOps API

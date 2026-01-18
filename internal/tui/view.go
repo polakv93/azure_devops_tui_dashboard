@@ -26,7 +26,9 @@ func (m Model) View() string {
 	b.WriteString("\n\n")
 
 	// Builds section
+	branchInfo := m.getBranchFilterInfo()
 	b.WriteString(m.renderSectionHeader("Builds", m.activeTab == TabBuilds))
+	b.WriteString(styles.HelpStyle.Render(fmt.Sprintf(" (branches: %s)", branchInfo)))
 	b.WriteString("\n")
 	if m.hasBuildData() {
 		b.WriteString(m.renderBuildsTable())

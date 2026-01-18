@@ -27,9 +27,10 @@ type AzureDevOpsConfig struct {
 
 // ProjectConfig holds project-specific settings
 type ProjectConfig struct {
-	Name               string `yaml:"name"`
-	BuildDefinitions   []int  `yaml:"build_definitions"`
-	ReleaseDefinitions []int  `yaml:"release_definitions"`
+	Name               string   `yaml:"name"`
+	BuildDefinitions   []int    `yaml:"build_definitions"`
+	ReleaseDefinitions []int    `yaml:"release_definitions"`
+	Branches           []string `yaml:"branches"` // Filter builds by branch names (e.g., "main", "develop")
 }
 
 // DisplayConfig holds display settings

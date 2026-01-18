@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/help"
@@ -175,6 +176,15 @@ func (m Model) getBuildError() error {
 func (m Model) getReleaseError() error {
 	project := m.CurrentProject().Name
 	return m.errors[project+"-releases"]
+}
+
+// getBranchFilterInfo returns branch filter info for the current project
+func (m Model) getBranchFilterInfo() string {
+	branches := m.CurrentProject().Branches
+	if len(branches) == 0 {
+		return "all"
+	}
+	return strings.Join(branches, ", ")
 }
 
 // CurrentError returns the error for the current project/tab if any

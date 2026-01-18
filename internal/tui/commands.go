@@ -17,7 +17,7 @@ func fetchBuilds(client *api.Client, project config.ProjectConfig, maxItems int)
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
-		builds, err := client.GetBuilds(ctx, project.Name, project.BuildDefinitions, maxItems)
+		builds, err := client.GetBuilds(ctx, project.Name, project.BuildDefinitions, project.Branches, maxItems)
 		if err != nil {
 			return BuildsLoadedMsg{
 				Project: project.Name,

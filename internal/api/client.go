@@ -117,9 +117,18 @@ func (c *Client) doSingleRequest(ctx context.Context, url string) ([]byte, error
 }
 
 // GetBuilds fetches builds for a project
-func (c *Client) GetBuilds(ctx context.Context, project string, definitionIDs []int, maxCount int) ([]Build, error) {
+func (c *Client) GetBuilds(ctx context.Context, project string, definitionIDs []int, branches []string, maxCount int) ([]Build, error) {
+	// Fetch more items if we need to filter by branches (to ensure we get enough results after filtering)
+	fetchCount := maxCount
+	if len(branches) > 0 {
+		fetchCount = maxCount * 5 // Fetch more to account for filtering
+		if fetchCount > 100 {
+			fetchCount = 100
+		}
+	}
+
 	url := fmt.Sprintf("%s/%s/%s/_apis/build/builds?api-version=7.0&$top=%d",
-		c.baseURL, c.organization, project, maxCount)
+		c.baseURL, c.organization, project, fetchCount)
 
 	if len(definitionIDs) > 0 {
 		ids := make([]string, len(definitionIDs))
@@ -139,7 +148,39 @@ func (c *Client) GetBuilds(ctx context.Context, project string, definitionIDs []
 		return nil, fmt.Errorf("failed to parse builds response: %w", err)
 	}
 
-	return response.Value, nil
+	builds := response.Value
+
+	// Filter by branches if specified
+	if len(branches) > 0 {
+		builds = filterBuildsByBranches(builds, branches)
+	}
+
+	// Limit results to maxCount
+	if len(builds) > maxCount {
+		builds = builds[:maxCount]
+	}
+
+	return builds, nil
+}
+
+// filterBuildsByBranches filters builds to only include those from specified branches
+func filterBuildsByBranches(builds []Build, branches []string) []Build {
+	// Create a map for quick branch lookup (normalize branch names)
+	branchMap := make(map[string]bool)
+	for _, branch := range branches {
+		// Support both "main" and "refs/heads/main" formats
+		normalized := strings.TrimPrefix(branch, "refs/heads/")
+		branchMap[normalized] = true
+		branchMap["refs/heads/"+normalized] = true
+	}
+
+	var filtered []Build
+	for _, build := range builds {
+		if branchMap[build.SourceBranch] {
+			filtered = append(filtered, build)
+		}
+	}
+	return filtered
 }
 
 // GetReleases fetches releases for a project
