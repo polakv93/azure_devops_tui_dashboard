@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
-	"github.com/polakj/azure_devops_tui_dashboard/internal/styles"
+	"github.com/polakv93/azure_devops_tui_dashboard/internal/styles"
 )
 
 // StatusBarConfig holds configuration for rendering the status bar

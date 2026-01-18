@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/polakj/azure_devops_tui_dashboard/internal/api"
-	"github.com/polakj/azure_devops_tui_dashboard/internal/styles"
+	"github.com/polakv93/azure_devops_tui_dashboard/internal/api"
+	"github.com/polakv93/azure_devops_tui_dashboard/internal/styles"
 )
 
 // BuildTableConfig holds configuration for rendering a build table

@@ -8,8 +8,8 @@ import (
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/polakj/azure_devops_tui_dashboard/internal/api"
-	"github.com/polakj/azure_devops_tui_dashboard/internal/config"
+	"github.com/polakv93/azure_devops_tui_dashboard/internal/api"
+	"github.com/polakv93/azure_devops_tui_dashboard/internal/config"
 )
 
 // Tab represents the active view tab

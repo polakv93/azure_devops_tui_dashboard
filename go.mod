@@ -1,4 +1,4 @@
-module github.com/polakj/azure_devops_tui_dashboard
+module github.com/polakv93/azure_devops_tui_dashboard
 
 go 1.25.2
 

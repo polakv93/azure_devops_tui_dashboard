@@ -1,7 +1,7 @@
 package tui
 
 import (
-	"github.com/polakj/azure_devops_tui_dashboard/internal/api"
+	"github.com/polakv93/azure_devops_tui_dashboard/internal/api"
 )
 
 // Message types for bubbletea

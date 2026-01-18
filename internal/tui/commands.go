@@ -7,8 +7,8 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/polakj/azure_devops_tui_dashboard/internal/api"
-	"github.com/polakj/azure_devops_tui_dashboard/internal/config"
+	"github.com/polakv93/azure_devops_tui_dashboard/internal/api"
+	"github.com/polakv93/azure_devops_tui_dashboard/internal/config"
 )
 
 // fetchBuilds creates a command to fetch builds for a project
