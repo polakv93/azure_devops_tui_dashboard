@@ -29,14 +29,16 @@ func RenderBuildTable(cfg BuildTableConfig) string {
 	branchWidth := 20
 	statusWidth := 15
 	resultWidth := 12
+	createdWidth := 18
 	durationWidth := 10
 
 	// Header
-	header := fmt.Sprintf("%-*s %-*s %-*s %-*s %-*s",
+	header := fmt.Sprintf("%-*s %-*s %-*s %-*s %-*s %-*s",
 		pipelineWidth, "Pipeline",
 		branchWidth, "Branch",
 		statusWidth, "Status",
 		resultWidth, "Result",
+		createdWidth, "Created",
 		durationWidth, "Duration")
 	b.WriteString(styles.TableHeaderStyle.Render(header))
 	b.WriteString("\n")
@@ -47,16 +49,18 @@ func RenderBuildTable(cfg BuildTableConfig) string {
 		branch := truncateString(build.GetBranchName(), branchWidth-2)
 		status := string(build.Status)
 		result := string(build.Result)
+		created := formatQueueTime(build.QueueTime)
 		duration := formatBuildDuration(build.GetDuration())
 
 		statusStyled := styles.FormatStatus(status)
 		resultStyled := styles.FormatStatus(result)
 
-		row := fmt.Sprintf("%-*s %-*s %s%-*s %s%-*s %-*s",
+		row := fmt.Sprintf("%-*s %-*s %s%-*s %s%-*s %-*s %-*s",
 			pipelineWidth, pipeline,
 			branchWidth, branch,
 			statusStyled, statusWidth-len(status), "",
 			resultStyled, resultWidth-len(result), "",
+			createdWidth, created,
 			durationWidth, duration)
 
 		if i == cfg.SelectedRow {
@@ -96,4 +100,12 @@ func formatBuildDuration(d time.Duration) string {
 		return fmt.Sprintf("%dm %ds", int(d.Minutes()), int(d.Seconds())%60)
 	}
 	return fmt.Sprintf("%dh %dm", int(d.Hours()), int(d.Minutes())%60)
+}
+
+// formatQueueTime formats the queue time for display
+func formatQueueTime(t time.Time) string {
+	if t.IsZero() {
+		return "-"
+	}
+	return t.Local().Format("2006-01-02 15:04")
 }

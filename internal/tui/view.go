@@ -100,9 +100,9 @@ func (m Model) renderBuildsTable() string {
 	}
 
 	// Calculate dynamic column widths based on screen width
-	// Fixed columns: Status(12), Result(12), Duration(10) = 34
+	// Fixed columns: Status(12), Result(12), Created(18), Duration(10) = 52
 	// Variable columns: Pipeline, Branch
-	fixedWidth := 12 + 12 + 10 + 4 // +4 for spacing
+	fixedWidth := 12 + 12 + 18 + 10 + 5 // +5 for spacing
 	availableWidth := m.width - fixedWidth
 	if availableWidth < 40 {
 		availableWidth = 40
@@ -113,8 +113,8 @@ func (m Model) renderBuildsTable() string {
 	var b strings.Builder
 
 	// Header
-	headerFmt := fmt.Sprintf("%%-%ds %%-%ds %%-12s %%-12s %%-10s", pipelineWidth, branchWidth)
-	header := fmt.Sprintf(headerFmt, "Pipeline", "Branch", "Status", "Result", "Duration")
+	headerFmt := fmt.Sprintf("%%-%ds %%-%ds %%-12s %%-12s %%-18s %%-10s", pipelineWidth, branchWidth)
+	header := fmt.Sprintf(headerFmt, "Pipeline", "Branch", "Status", "Result", "Created", "Duration")
 	b.WriteString(styles.TableHeaderStyle.Render(header))
 	b.WriteString("\n")
 
@@ -124,13 +124,14 @@ func (m Model) renderBuildsTable() string {
 		branch := truncate(build.GetBranchName(), branchWidth-2)
 		status := string(build.Status)
 		result := string(build.Result)
+		created := formatCreatedTime(build.QueueTime)
 		duration := formatDuration(build.GetDuration())
 
 		statusDisplay := styles.GetStatusStyle(status).Render(fmt.Sprintf("%-12s", status))
 		resultDisplay := styles.GetStatusStyle(result).Render(fmt.Sprintf("%-12s", result))
 
-		rowFmt := fmt.Sprintf("%%-%ds %%-%ds %%s %%s %%-10s", pipelineWidth, branchWidth)
-		row := fmt.Sprintf(rowFmt, pipeline, branch, statusDisplay, resultDisplay, duration)
+		rowFmt := fmt.Sprintf("%%-%ds %%-%ds %%s %%s %%-18s %%-10s", pipelineWidth, branchWidth)
+		row := fmt.Sprintf(rowFmt, pipeline, branch, statusDisplay, resultDisplay, created, duration)
 
 		// Only show selection if Builds section is active
 		if i == m.selectedRow && m.activeTab == TabBuilds {
@@ -152,9 +153,9 @@ func (m Model) renderReleasesTable() string {
 	}
 
 	// Calculate dynamic column widths based on screen width
-	// Fixed columns: Status(12) = 12
+	// Fixed columns: Status(12), Created(18) = 30
 	// Variable columns: Release, Definition, Environments
-	fixedWidth := 12 + 3 // +3 for spacing
+	fixedWidth := 12 + 18 + 4 // +4 for spacing
 	availableWidth := m.width - fixedWidth
 	if availableWidth < 60 {
 		availableWidth = 60
@@ -166,8 +167,8 @@ func (m Model) renderReleasesTable() string {
 	var b strings.Builder
 
 	// Header
-	headerFmt := fmt.Sprintf("%%-%ds %%-%ds %%-12s %%-%ds", releaseWidth, definitionWidth, environmentsWidth)
-	header := fmt.Sprintf(headerFmt, "Release", "Definition", "Status", "Environments")
+	headerFmt := fmt.Sprintf("%%-%ds %%-%ds %%-12s %%-18s %%-%ds", releaseWidth, definitionWidth, environmentsWidth)
+	header := fmt.Sprintf(headerFmt, "Release", "Definition", "Status", "Created", "Environments")
 	b.WriteString(styles.TableHeaderStyle.Render(header))
 	b.WriteString("\n")
 
@@ -176,12 +177,13 @@ func (m Model) renderReleasesTable() string {
 		name := truncate(release.Name, releaseWidth-2)
 		definition := truncate(release.ReleaseDefinition.Name, definitionWidth-2)
 		status := string(release.Status)
+		created := formatCreatedTime(release.CreatedOn)
 		environments := truncate(release.GetEnvironmentSummary(), environmentsWidth-2)
 
 		statusDisplay := styles.GetStatusStyle(status).Render(fmt.Sprintf("%-12s", status))
 
-		rowFmt := fmt.Sprintf("%%-%ds %%-%ds %%s %%-%ds", releaseWidth, definitionWidth, environmentsWidth)
-		row := fmt.Sprintf(rowFmt, name, definition, statusDisplay, environments)
+		rowFmt := fmt.Sprintf("%%-%ds %%-%ds %%s %%-18s %%-%ds", releaseWidth, definitionWidth, environmentsWidth)
+		row := fmt.Sprintf(rowFmt, name, definition, statusDisplay, created, environments)
 
 		// Only show selection if Releases section is active
 		if i == m.selectedRow && m.activeTab == TabReleases {
@@ -252,4 +254,12 @@ func formatDuration(d time.Duration) string {
 		return fmt.Sprintf("%dm %ds", int(d.Minutes()), int(d.Seconds())%60)
 	}
 	return fmt.Sprintf("%dh %dm", int(d.Hours()), int(d.Minutes())%60)
+}
+
+// formatCreatedTime formats the created time for display
+func formatCreatedTime(t time.Time) string {
+	if t.IsZero() {
+		return "-"
+	}
+	return t.Local().Format("2006-01-02 15:04")
 }

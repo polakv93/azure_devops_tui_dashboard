@@ -3,6 +3,7 @@ package components
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/polakv93/azure_devops_tui_dashboard/internal/api"
 	"github.com/polakv93/azure_devops_tui_dashboard/internal/styles"
@@ -27,13 +28,15 @@ func RenderReleaseTable(cfg ReleaseTableConfig) string {
 	releaseWidth := 25
 	definitionWidth := 25
 	statusWidth := 12
+	createdWidth := 18
 	environmentsWidth := 40
 
 	// Header
-	header := fmt.Sprintf("%-*s %-*s %-*s %-*s",
+	header := fmt.Sprintf("%-*s %-*s %-*s %-*s %-*s",
 		releaseWidth, "Release",
 		definitionWidth, "Definition",
 		statusWidth, "Status",
+		createdWidth, "Created",
 		environmentsWidth, "Environments")
 	b.WriteString(styles.TableHeaderStyle.Render(header))
 	b.WriteString("\n")
@@ -43,14 +46,16 @@ func RenderReleaseTable(cfg ReleaseTableConfig) string {
 		name := truncateString(release.Name, releaseWidth-2)
 		definition := truncateString(release.ReleaseDefinition.Name, definitionWidth-2)
 		status := string(release.Status)
+		created := formatCreatedTime(release.CreatedOn)
 		environments := truncateString(release.GetEnvironmentSummary(), environmentsWidth-2)
 
 		statusStyled := styles.FormatStatus(status)
 
-		row := fmt.Sprintf("%-*s %-*s %s%-*s %-*s",
+		row := fmt.Sprintf("%-*s %-*s %s%-*s %-*s %-*s",
 			releaseWidth, name,
 			definitionWidth, definition,
 			statusStyled, statusWidth-len(status), "",
+			createdWidth, created,
 			environmentsWidth, environments)
 
 		if i == cfg.SelectedRow {
@@ -97,4 +102,12 @@ func getEnvironmentIcon(status api.EnvironmentStatus) string {
 	default:
 		return "-"
 	}
+}
+
+// formatCreatedTime formats the created time for display
+func formatCreatedTime(t time.Time) string {
+	if t.IsZero() {
+		return "-"
+	}
+	return t.Local().Format("2006-01-02 15:04")
 }
