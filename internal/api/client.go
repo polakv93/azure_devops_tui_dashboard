@@ -127,7 +127,7 @@ func (c *Client) GetBuilds(ctx context.Context, project string, definitionIDs []
 		}
 	}
 
-	url := fmt.Sprintf("%s/%s/%s/_apis/build/builds?api-version=7.0&$top=%d",
+	url := fmt.Sprintf("%s/%s/%s/_apis/build/builds?api-version=7.0&$top=%d&statusFilter=all&queryOrder=queueTimeDescending",
 		c.baseURL, c.organization, project, fetchCount)
 
 	if len(definitionIDs) > 0 {
