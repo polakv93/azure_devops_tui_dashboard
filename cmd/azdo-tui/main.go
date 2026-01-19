@@ -6,8 +6,8 @@ import (
 	"os"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/polakj/azure_devops_tui_dashboard/internal/config"
-	"github.com/polakj/azure_devops_tui_dashboard/internal/tui"
+	"github.com/polakv93/azure_devops_tui_dashboard/internal/config"
+	"github.com/polakv93/azure_devops_tui_dashboard/internal/tui"
 )
 
 var (
