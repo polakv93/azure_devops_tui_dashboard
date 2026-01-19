@@ -115,6 +115,24 @@ func FormatStatus(status string) string {
 	return style.Render(status)
 }
 
+// GetPullRequestStatusStyle returns the appropriate style for a pull request status
+func GetPullRequestStatusStyle(status string) lipgloss.Style {
+	switch status {
+	case "active":
+		return lipgloss.NewStyle().Foreground(ColorBlue)
+	case "completed":
+		return SucceededStyle
+	case "abandoned":
+		return lipgloss.NewStyle().Foreground(ColorGray)
+	case "draft":
+		return lipgloss.NewStyle().Foreground(ColorDimGray)
+	case "conflicts":
+		return FailedStyle
+	default:
+		return lipgloss.NewStyle().Foreground(ColorGray)
+	}
+}
+
 // Box styles for layout
 var (
 	BoxStyle = lipgloss.NewStyle().

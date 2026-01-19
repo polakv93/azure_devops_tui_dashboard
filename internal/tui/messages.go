@@ -20,6 +20,13 @@ type ReleasesLoadedMsg struct {
 	Err      error
 }
 
+// PullRequestsLoadedMsg is sent when pull requests have been fetched
+type PullRequestsLoadedMsg struct {
+	Project      string
+	PullRequests []api.PullRequest
+	Err          error
+}
+
 // RefreshTickMsg is sent by the refresh ticker
 type RefreshTickMsg struct{}
 

@@ -57,6 +57,22 @@ func (m Model) View() string {
 		b.WriteString(styles.HelpStyle.Render("No releases found"))
 	}
 
+	b.WriteString("\n\n")
+
+	// Pull Requests section
+	b.WriteString(m.renderSectionHeader("Pull Requests", m.activeTab == TabPullRequests))
+	b.WriteString("\n")
+	if m.hasPullRequestData() {
+		b.WriteString(m.renderPullRequestsTable())
+	} else if m.loadingPullRequests[m.CurrentProject().Name] {
+		b.WriteString(m.spinner.View())
+		b.WriteString(" Loading pull requests...")
+	} else if err := m.getPullRequestError(); err != nil {
+		b.WriteString(styles.ErrorStyle.Render(fmt.Sprintf("Error: %v", err)))
+	} else {
+		b.WriteString(styles.HelpStyle.Render("No pull requests found"))
+	}
+
 	// Status bar
 	b.WriteString("\n\n")
 	b.WriteString(m.renderStatusBar())
@@ -107,7 +123,7 @@ func (m Model) renderBuildsTable() string {
 	if availableWidth < 40 {
 		availableWidth = 40
 	}
-	pipelineWidth := availableWidth * 55 / 100 // 55% for pipeline
+	pipelineWidth := availableWidth * 55 / 100    // 55% for pipeline
 	branchWidth := availableWidth - pipelineWidth // rest for branch
 
 	var b strings.Builder
@@ -160,8 +176,8 @@ func (m Model) renderReleasesTable() string {
 	if availableWidth < 60 {
 		availableWidth = 60
 	}
-	releaseWidth := availableWidth * 20 / 100      // 20% for release name
-	definitionWidth := availableWidth * 25 / 100  // 25% for definition
+	releaseWidth := availableWidth * 20 / 100                            // 20% for release name
+	definitionWidth := availableWidth * 25 / 100                         // 25% for definition
 	environmentsWidth := availableWidth - releaseWidth - definitionWidth // rest for environments
 
 	var b strings.Builder
@@ -197,6 +213,61 @@ func (m Model) renderReleasesTable() string {
 	return b.String()
 }
 
+// renderPullRequestsTable renders the pull requests table
+func (m Model) renderPullRequestsTable() string {
+	pullRequests := m.CurrentPullRequests()
+	if len(pullRequests) == 0 {
+		return styles.HelpStyle.Render("No pull requests found")
+	}
+
+	// Calculate dynamic column widths based on screen width
+	// Fixed columns: Status(12), Reviewers(12), Created(18) = 42
+	// Variable columns: Title, Repository, Branches, Author
+	fixedWidth := 12 + 12 + 18 + 5 // +5 for spacing
+	availableWidth := m.width - fixedWidth
+	if availableWidth < 80 {
+		availableWidth = 80
+	}
+	titleWidth := availableWidth * 35 / 100                                // 35% for title
+	repoWidth := availableWidth * 15 / 100                                 // 15% for repository
+	branchesWidth := availableWidth * 30 / 100                             // 30% for branches
+	authorWidth := availableWidth - titleWidth - repoWidth - branchesWidth // rest for author
+
+	var b strings.Builder
+
+	// Header
+	headerFmt := fmt.Sprintf("%%-%ds %%-%ds %%-%ds %%-%ds %%-12s %%-12s %%-18s", titleWidth, repoWidth, branchesWidth, authorWidth)
+	header := fmt.Sprintf(headerFmt, "Title", "Repository", "Branches", "Author", "Status", "Reviewers", "Created")
+	b.WriteString(styles.TableHeaderStyle.Render(header))
+	b.WriteString("\n")
+
+	// Rows
+	for i, pr := range pullRequests {
+		title := truncate(pr.Title, titleWidth-2)
+		repo := truncate(pr.Repository.Name, repoWidth-2)
+		branches := truncate(pr.GetBranchSummary(), branchesWidth-2)
+		author := truncate(pr.CreatedBy.DisplayName, authorWidth-2)
+		status := pr.GetStatusDisplay()
+		reviewers := pr.GetReviewerSummary()
+		created := formatCreatedTime(pr.CreationDate)
+
+		statusDisplay := styles.GetPullRequestStatusStyle(status).Render(fmt.Sprintf("%-12s", status))
+
+		rowFmt := fmt.Sprintf("%%-%ds %%-%ds %%-%ds %%-%ds %%s %%-12s %%-18s", titleWidth, repoWidth, branchesWidth, authorWidth)
+		row := fmt.Sprintf(rowFmt, title, repo, branches, author, statusDisplay, reviewers, created)
+
+		// Only show selection if Pull Requests section is active
+		if i == m.selectedRow && m.activeTab == TabPullRequests {
+			row = styles.SelectedRowStyle.Render(row)
+		}
+
+		b.WriteString(row)
+		b.WriteString("\n")
+	}
+
+	return b.String()
+}
+
 // renderStatusBar renders the status bar
 func (m Model) renderStatusBar() string {
 	var parts []string
@@ -219,6 +290,11 @@ func (m Model) renderStatusBar() string {
 		}
 	}
 	for _, loading := range m.loadingReleases {
+		if loading {
+			loadingCount++
+		}
+	}
+	for _, loading := range m.loadingPullRequests {
 		if loading {
 			loadingCount++
 		}

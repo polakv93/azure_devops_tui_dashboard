@@ -30,7 +30,8 @@ type ProjectConfig struct {
 	Name               string   `yaml:"name"`
 	BuildDefinitions   []int    `yaml:"build_definitions"`
 	ReleaseDefinitions []int    `yaml:"release_definitions"`
-	Branches           []string `yaml:"branches"` // Filter builds by branch names (e.g., "main", "develop")
+	Branches           []string `yaml:"branches"`     // Filter builds by branch names (e.g., "main", "develop")
+	Repositories       []string `yaml:"repositories"` // Filter PRs by repository names
 }
 
 // DisplayConfig holds display settings

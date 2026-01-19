@@ -53,7 +53,28 @@ func fetchReleases(client *api.Client, project config.ProjectConfig, maxItems in
 	}
 }
 
-// fetchAllData creates commands to fetch all builds and releases
+// fetchPullRequests creates a command to fetch pull requests for a project
+func fetchPullRequests(client *api.Client, project config.ProjectConfig, maxItems int) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		pullRequests, err := client.GetPullRequests(ctx, project.Name, project.Repositories, maxItems)
+		if err != nil {
+			return PullRequestsLoadedMsg{
+				Project: project.Name,
+				Err:     err,
+			}
+		}
+
+		return PullRequestsLoadedMsg{
+			Project:      project.Name,
+			PullRequests: pullRequests,
+		}
+	}
+}
+
+// fetchAllData creates commands to fetch all builds, releases, and pull requests
 func fetchAllData(client *api.Client, projects []config.ProjectConfig, maxItems int) tea.Cmd {
 	var cmds []tea.Cmd
 
@@ -61,6 +82,7 @@ func fetchAllData(client *api.Client, projects []config.ProjectConfig, maxItems 
 		p := project // capture loop variable
 		cmds = append(cmds, fetchBuilds(client, p, maxItems))
 		cmds = append(cmds, fetchReleases(client, p, maxItems))
+		cmds = append(cmds, fetchPullRequests(client, p, maxItems))
 	}
 
 	return tea.Batch(cmds...)

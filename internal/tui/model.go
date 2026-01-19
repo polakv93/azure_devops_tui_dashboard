@@ -18,6 +18,7 @@ type Tab int
 const (
 	TabBuilds Tab = iota
 	TabReleases
+	TabPullRequests
 )
 
 // Model is the main application model
@@ -35,12 +36,14 @@ type Model struct {
 	showHelp      bool
 
 	// Data
-	builds   map[string][]api.Build   // project name -> builds
-	releases map[string][]api.Release // project name -> releases
+	builds       map[string][]api.Build       // project name -> builds
+	releases     map[string][]api.Release     // project name -> releases
+	pullRequests map[string][]api.PullRequest // project name -> pull requests
 
 	// Loading states
-	loadingBuilds   map[string]bool
-	loadingReleases map[string]bool
+	loadingBuilds       map[string]bool
+	loadingReleases     map[string]bool
+	loadingPullRequests map[string]bool
 
 	// Errors
 	errors map[string]error
@@ -64,19 +67,21 @@ func NewModel(cfg *config.Config) Model {
 	h.ShowAll = false
 
 	return Model{
-		config:          cfg,
-		client:          newClientFromConfig(cfg),
-		activeTab:       TabBuilds,
-		activeProject:   0,
-		selectedRow:     0,
-		builds:          make(map[string][]api.Build),
-		releases:        make(map[string][]api.Release),
-		loadingBuilds:   make(map[string]bool),
-		loadingReleases: make(map[string]bool),
-		errors:          make(map[string]error),
-		spinner:         s,
-		help:            h,
-		keys:            DefaultKeyMap(),
+		config:              cfg,
+		client:              newClientFromConfig(cfg),
+		activeTab:           TabBuilds,
+		activeProject:       0,
+		selectedRow:         0,
+		builds:              make(map[string][]api.Build),
+		releases:            make(map[string][]api.Release),
+		pullRequests:        make(map[string][]api.PullRequest),
+		loadingBuilds:       make(map[string]bool),
+		loadingReleases:     make(map[string]bool),
+		loadingPullRequests: make(map[string]bool),
+		errors:              make(map[string]error),
+		spinner:             s,
+		help:                h,
+		keys:                DefaultKeyMap(),
 	}
 }
 
@@ -97,6 +102,7 @@ func (m Model) Init() tea.Cmd {
 	for _, p := range m.config.Projects {
 		m.loadingBuilds[p.Name] = true
 		m.loadingReleases[p.Name] = true
+		m.loadingPullRequests[p.Name] = true
 	}
 
 	return tea.Batch(
@@ -126,6 +132,12 @@ func (m Model) CurrentReleases() []api.Release {
 	return m.releases[project]
 }
 
+// CurrentPullRequests returns the pull requests for the current project
+func (m Model) CurrentPullRequests() []api.PullRequest {
+	project := m.CurrentProject().Name
+	return m.pullRequests[project]
+}
+
 // IsLoading returns true if data is being loaded for the current project
 func (m Model) IsLoading() bool {
 	project := m.CurrentProject().Name
@@ -134,6 +146,8 @@ func (m Model) IsLoading() bool {
 		return m.loadingBuilds[project]
 	case TabReleases:
 		return m.loadingReleases[project]
+	case TabPullRequests:
+		return m.loadingPullRequests[project]
 	}
 	return false
 }
@@ -148,6 +162,9 @@ func (m Model) HasData() bool {
 	case TabReleases:
 		releases, ok := m.releases[project]
 		return ok && len(releases) > 0
+	case TabPullRequests:
+		pullRequests, ok := m.pullRequests[project]
+		return ok && len(pullRequests) > 0
 	}
 	return false
 }
@@ -178,6 +195,19 @@ func (m Model) getReleaseError() error {
 	return m.errors[project+"-releases"]
 }
 
+// hasPullRequestData returns true if pull request data is available for the current project
+func (m Model) hasPullRequestData() bool {
+	project := m.CurrentProject().Name
+	pullRequests, ok := m.pullRequests[project]
+	return ok && len(pullRequests) > 0
+}
+
+// getPullRequestError returns the pull request error for the current project if any
+func (m Model) getPullRequestError() error {
+	project := m.CurrentProject().Name
+	return m.errors[project+"-pullrequests"]
+}
+
 // getBranchFilterInfo returns branch filter info for the current project
 func (m Model) getBranchFilterInfo() string {
 	branches := m.CurrentProject().Branches
@@ -191,10 +221,13 @@ func (m Model) getBranchFilterInfo() string {
 func (m Model) CurrentError() error {
 	project := m.CurrentProject().Name
 	key := project
-	if m.activeTab == TabBuilds {
+	switch m.activeTab {
+	case TabBuilds:
 		key += "-builds"
-	} else {
+	case TabReleases:
 		key += "-releases"
+	case TabPullRequests:
+		key += "-pullrequests"
 	}
 	return m.errors[key]
 }
@@ -206,6 +239,8 @@ func (m Model) MaxRows() int {
 		return len(m.CurrentBuilds())
 	case TabReleases:
 		return len(m.CurrentReleases())
+	case TabPullRequests:
+		return len(m.CurrentPullRequests())
 	}
 	return 0
 }

@@ -152,3 +152,50 @@ type ProjectReference struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 }
+
+// PullRequestStatus represents the status of a pull request
+type PullRequestStatus string
+
+const (
+	PullRequestStatusActive    PullRequestStatus = "active"
+	PullRequestStatusAbandoned PullRequestStatus = "abandoned"
+	PullRequestStatusCompleted PullRequestStatus = "completed"
+	PullRequestStatusNotSet    PullRequestStatus = "notSet"
+)
+
+// PullRequest represents an Azure DevOps pull request
+type PullRequest struct {
+	PullRequestID int                   `json:"pullRequestId"`
+	Title         string                `json:"title"`
+	SourceRefName string                `json:"sourceRefName"`
+	TargetRefName string                `json:"targetRefName"`
+	CreationDate  time.Time             `json:"creationDate"`
+	CreatedBy     Identity              `json:"createdBy"`
+	Repository    PullRequestRepository `json:"repository"`
+	Reviewers     []Reviewer            `json:"reviewers"`
+	Status        PullRequestStatus     `json:"status"`
+	IsDraft       bool                  `json:"isDraft"`
+	MergeStatus   string                `json:"mergeStatus"`
+	URL           string                `json:"url"`
+}
+
+// Reviewer represents a pull request reviewer
+type Reviewer struct {
+	DisplayName string `json:"displayName"`
+	UniqueName  string `json:"uniqueName"`
+	Vote        int    `json:"vote"` // 10=approved, 5=approved with suggestions, 0=no vote, -5=waiting, -10=rejected
+}
+
+// PullRequestRepository represents the repository for a pull request
+type PullRequestRepository struct {
+	ID      string      `json:"id"`
+	Name    string      `json:"name"`
+	URL     string      `json:"url"`
+	Project TeamProject `json:"project"`
+}
+
+// PullRequestsResponse represents the API response for pull requests
+type PullRequestsResponse struct {
+	Count int           `json:"count"`
+	Value []PullRequest `json:"value"`
+}

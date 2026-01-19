@@ -42,6 +42,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case PullRequestsLoadedMsg:
+		m.loadingPullRequests[msg.Project] = false
+		if msg.Err != nil {
+			m.errors[msg.Project+"-pullrequests"] = msg.Err
+		} else {
+			delete(m.errors, msg.Project+"-pullrequests")
+			m.pullRequests[msg.Project] = msg.PullRequests
+		}
+		return m, nil
+
 	case RefreshTickMsg:
 		return m.handleRefresh()
 
@@ -67,7 +77,7 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case key.Matches(msg, m.keys.Tab):
-		m.activeTab = (m.activeTab + 1) % 2
+		m.activeTab = (m.activeTab + 1) % 3
 		m.selectedRow = 0
 		return m, nil
 
@@ -108,7 +118,7 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// handleEnter opens the selected build/release in the browser
+// handleEnter opens the selected build/release/pull request in the browser
 func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 	project := m.CurrentProject().Name
 	var url string
@@ -135,6 +145,13 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 				url = m.client.GetReleaseWebURL(project, release.ID)
 			}
 		}
+
+	case TabPullRequests:
+		pullRequests := m.CurrentPullRequests()
+		if m.selectedRow >= 0 && m.selectedRow < len(pullRequests) {
+			pr := pullRequests[m.selectedRow]
+			url = m.client.GetPullRequestWebURL(project, pr.Repository.Name, pr.PullRequestID)
+		}
 	}
 
 	if url != "" {
@@ -155,6 +172,7 @@ func (m Model) handleRefresh() (tea.Model, tea.Cmd) {
 	for _, p := range m.config.Projects {
 		m.loadingBuilds[p.Name] = true
 		m.loadingReleases[p.Name] = true
+		m.loadingPullRequests[p.Name] = true
 	}
 
 	m.lastRefresh = time.Now()
@@ -173,6 +191,11 @@ func (m Model) isAnyLoading() bool {
 		}
 	}
 	for _, loading := range m.loadingReleases {
+		if loading {
+			return true
+		}
+	}
+	for _, loading := range m.loadingPullRequests {
 		if loading {
 			return true
 		}

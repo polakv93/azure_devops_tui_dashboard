@@ -223,3 +223,76 @@ func (c *Client) GetReleaseWebURL(project string, releaseID int) string {
 	return fmt.Sprintf("%s/%s/%s/_releaseProgress?releaseId=%d",
 		c.baseURL, c.organization, project, releaseID)
 }
+
+// GetPullRequests fetches pull requests for a project
+func (c *Client) GetPullRequests(ctx context.Context, project string, repositories []string, maxCount int) ([]PullRequest, error) {
+	var allPRs []PullRequest
+
+	// If no specific repositories are specified, get all PRs for the project
+	if len(repositories) == 0 {
+		prs, err := c.getPullRequestsForProject(ctx, project, maxCount)
+		if err != nil {
+			return nil, err
+		}
+		return prs, nil
+	}
+
+	// Fetch PRs for each repository
+	for _, repo := range repositories {
+		prs, err := c.getPullRequestsForRepo(ctx, project, repo, maxCount)
+		if err != nil {
+			// Log error but continue with other repos
+			continue
+		}
+		allPRs = append(allPRs, prs...)
+	}
+
+	// Limit total results
+	if len(allPRs) > maxCount {
+		allPRs = allPRs[:maxCount]
+	}
+
+	return allPRs, nil
+}
+
+// getPullRequestsForProject fetches all active PRs for a project
+func (c *Client) getPullRequestsForProject(ctx context.Context, project string, maxCount int) ([]PullRequest, error) {
+	url := fmt.Sprintf("%s/%s/%s/_apis/git/pullrequests?api-version=7.0&searchCriteria.status=active&$top=%d",
+		c.baseURL, c.organization, project, maxCount)
+
+	body, err := c.doRequest(ctx, url)
+	if err != nil {
+		return nil, err
+	}
+
+	var response PullRequestsResponse
+	if err := json.Unmarshal(body, &response); err != nil {
+		return nil, fmt.Errorf("failed to parse pull requests response: %w", err)
+	}
+
+	return response.Value, nil
+}
+
+// getPullRequestsForRepo fetches active PRs for a specific repository
+func (c *Client) getPullRequestsForRepo(ctx context.Context, project, repository string, maxCount int) ([]PullRequest, error) {
+	url := fmt.Sprintf("%s/%s/%s/_apis/git/repositories/%s/pullrequests?api-version=7.0&searchCriteria.status=active&$top=%d",
+		c.baseURL, c.organization, project, repository, maxCount)
+
+	body, err := c.doRequest(ctx, url)
+	if err != nil {
+		return nil, err
+	}
+
+	var response PullRequestsResponse
+	if err := json.Unmarshal(body, &response); err != nil {
+		return nil, fmt.Errorf("failed to parse pull requests response: %w", err)
+	}
+
+	return response.Value, nil
+}
+
+// GetPullRequestWebURL returns the web URL for a pull request
+func (c *Client) GetPullRequestWebURL(project, repoName string, prID int) string {
+	return fmt.Sprintf("%s/%s/%s/_git/%s/pullrequest/%d",
+		c.baseURL, c.organization, project, repoName, prID)
+}
