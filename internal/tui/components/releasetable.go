@@ -47,16 +47,16 @@ func RenderReleaseTable(cfg ReleaseTableConfig) string {
 		definition := truncateString(release.ReleaseDefinition.Name, definitionWidth-2)
 		status := string(release.Status)
 		created := formatCreatedTime(release.CreatedOn)
-		environments := truncateString(release.GetEnvironmentSummary(), environmentsWidth-2)
+		environments := renderEnvironmentSummaryColored(release.Environments, environmentsWidth-2)
 
 		statusStyled := styles.FormatStatus(status)
 
-		row := fmt.Sprintf("%-*s %-*s %s%-*s %-*s %-*s",
+		row := fmt.Sprintf("%-*s %-*s %s%-*s %-*s %s",
 			releaseWidth, name,
 			definitionWidth, definition,
 			statusStyled, statusWidth-len(status), "",
 			createdWidth, created,
-			environmentsWidth, environments)
+			environments)
 
 		if i == cfg.SelectedRow {
 			row = styles.SelectedRowStyle.Render(row)
@@ -110,4 +110,40 @@ func formatCreatedTime(t time.Time) string {
 		return "-"
 	}
 	return t.Local().Format("2006-01-02 15:04")
+}
+
+// renderEnvironmentSummaryColored renders environment summary with colored icons
+func renderEnvironmentSummaryColored(environments []api.ReleaseEnvironment, maxWidth int) string {
+	if len(environments) == 0 {
+		return "-"
+	}
+
+	var parts []string
+	for _, env := range environments {
+		icon := getEnvironmentIcon(env.Status)
+		coloredIcon := colorizeIcon(icon, env.Status)
+		parts = append(parts, env.Name+":"+coloredIcon)
+	}
+
+	result := strings.Join(parts, " → ")
+	// Truncate if too long (accounting for ANSI codes)
+	return result
+}
+
+// colorizeIcon applies appropriate color to the status icon
+func colorizeIcon(icon string, status api.EnvironmentStatus) string {
+	switch status {
+	case api.EnvironmentStatusSucceeded:
+		return styles.SucceededStyle.Render(icon)
+	case api.EnvironmentStatusRejected, api.EnvironmentStatusCanceled:
+		return styles.FailedStyle.Render(icon)
+	case api.EnvironmentStatusInProgress:
+		return styles.InProgressStyle.Render(icon)
+	case api.EnvironmentStatusQueued, api.EnvironmentStatusScheduled:
+		return styles.QueuedStyle.Render(icon)
+	case api.EnvironmentStatusPartiallySucceeded:
+		return styles.CanceledStyle.Render(icon)
+	default:
+		return styles.NotStartedStyle.Render(icon)
+	}
 }

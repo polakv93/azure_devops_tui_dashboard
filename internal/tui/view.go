@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/polakv93/azure_devops_tui_dashboard/internal/api"
 	"github.com/polakv93/azure_devops_tui_dashboard/internal/styles"
 )
 
@@ -194,11 +195,11 @@ func (m Model) renderReleasesTable() string {
 		definition := truncate(release.ReleaseDefinition.Name, definitionWidth-2)
 		status := string(release.Status)
 		created := formatCreatedTime(release.CreatedOn)
-		environments := truncate(release.GetEnvironmentSummary(), environmentsWidth-2)
+		environments := renderColoredEnvironments(release.Environments)
 
 		statusDisplay := styles.GetStatusStyle(status).Render(fmt.Sprintf("%-12s", status))
 
-		rowFmt := fmt.Sprintf("%%-%ds %%-%ds %%s %%-18s %%-%ds", releaseWidth, definitionWidth, environmentsWidth)
+		rowFmt := fmt.Sprintf("%%-%ds %%-%ds %%s %%-18s %%s", releaseWidth, definitionWidth)
 		row := fmt.Sprintf(rowFmt, name, definition, statusDisplay, created, environments)
 
 		// Only show selection if Releases section is active
@@ -338,4 +339,56 @@ func formatCreatedTime(t time.Time) string {
 		return "-"
 	}
 	return t.Local().Format("2006-01-02 15:04")
+}
+
+// renderColoredEnvironments renders environment summary with colored status icons
+func renderColoredEnvironments(environments []api.ReleaseEnvironment) string {
+	if len(environments) == 0 {
+		return "-"
+	}
+
+	var parts []string
+	for _, env := range environments {
+		icon := getEnvStatusIcon(env.Status)
+		coloredIcon := colorizeEnvIcon(icon, env.Status)
+		parts = append(parts, env.Name+":"+coloredIcon)
+	}
+
+	return strings.Join(parts, " → ")
+}
+
+// getEnvStatusIcon returns the icon for environment status
+func getEnvStatusIcon(status api.EnvironmentStatus) string {
+	switch status {
+	case api.EnvironmentStatusSucceeded:
+		return "✓"
+	case api.EnvironmentStatusRejected, api.EnvironmentStatusCanceled:
+		return "✗"
+	case api.EnvironmentStatusInProgress:
+		return "●"
+	case api.EnvironmentStatusQueued, api.EnvironmentStatusScheduled:
+		return "○"
+	case api.EnvironmentStatusPartiallySucceeded:
+		return "◐"
+	default:
+		return "-"
+	}
+}
+
+// colorizeEnvIcon applies color to the status icon
+func colorizeEnvIcon(icon string, status api.EnvironmentStatus) string {
+	switch status {
+	case api.EnvironmentStatusSucceeded:
+		return styles.SucceededStyle.Render(icon)
+	case api.EnvironmentStatusRejected, api.EnvironmentStatusCanceled:
+		return styles.FailedStyle.Render(icon)
+	case api.EnvironmentStatusInProgress:
+		return styles.InProgressStyle.Render(icon)
+	case api.EnvironmentStatusQueued, api.EnvironmentStatusScheduled:
+		return styles.QueuedStyle.Render(icon)
+	case api.EnvironmentStatusPartiallySucceeded:
+		return styles.CanceledStyle.Render(icon)
+	default:
+		return styles.NotStartedStyle.Render(icon)
+	}
 }
