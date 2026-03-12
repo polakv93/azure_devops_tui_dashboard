@@ -25,21 +25,59 @@ const (
 	BuildResultCanceled           BuildResult = "canceled"
 )
 
+// BuildTimelineRecordState represents the state of a timeline record
+type BuildTimelineRecordState string
+
+const (
+	BuildTimelineRecordStatePending    BuildTimelineRecordState = "pending"
+	BuildTimelineRecordStateInProgress BuildTimelineRecordState = "inProgress"
+	BuildTimelineRecordStateCompleted  BuildTimelineRecordState = "completed"
+)
+
+// BuildTimelineRecordResult represents the result of a completed timeline record
+type BuildTimelineRecordResult string
+
+const (
+	BuildTimelineRecordResultSucceeded          BuildTimelineRecordResult = "succeeded"
+	BuildTimelineRecordResultSucceededWithIssues BuildTimelineRecordResult = "succeededWithIssues"
+	BuildTimelineRecordResultFailed             BuildTimelineRecordResult = "failed"
+	BuildTimelineRecordResultCanceled           BuildTimelineRecordResult = "canceled"
+	BuildTimelineRecordResultSkipped            BuildTimelineRecordResult = "skipped"
+	BuildTimelineRecordResultAbandoned          BuildTimelineRecordResult = "abandoned"
+)
+
+// BuildTimelineRecord represents a record in the build timeline (stage, phase, job, task)
+type BuildTimelineRecord struct {
+	ID       string                   `json:"id"`
+	ParentID string                   `json:"parentId"`
+	Name     string                   `json:"name"`
+	Type     string                   `json:"type"` // "Stage", "Phase", "Job", "Task", "Checkpoint"
+	Order    int                      `json:"order"`
+	State    BuildTimelineRecordState `json:"state"`
+	Result   BuildTimelineRecordResult `json:"result"`
+}
+
+// BuildTimelineResponse represents the API response for a build timeline
+type BuildTimelineResponse struct {
+	Records []BuildTimelineRecord `json:"records"`
+}
+
 // Build represents an Azure DevOps build
 type Build struct {
-	ID            int             `json:"id"`
-	BuildNumber   string          `json:"buildNumber"`
-	Status        BuildStatus     `json:"status"`
-	Result        BuildResult     `json:"result"`
-	QueueTime     time.Time       `json:"queueTime"`
-	StartTime     time.Time       `json:"startTime"`
-	FinishTime    time.Time       `json:"finishTime"`
-	Definition    BuildDefinition `json:"definition"`
-	SourceBranch  string          `json:"sourceBranch"`
-	SourceVersion string          `json:"sourceVersion"`
-	RequestedFor  Identity        `json:"requestedFor"`
-	Project       TeamProject     `json:"project"`
-	Links         BuildLinks      `json:"_links"`
+	ID            int                   `json:"id"`
+	BuildNumber   string                `json:"buildNumber"`
+	Status        BuildStatus           `json:"status"`
+	Result        BuildResult           `json:"result"`
+	QueueTime     time.Time             `json:"queueTime"`
+	StartTime     time.Time             `json:"startTime"`
+	FinishTime    time.Time             `json:"finishTime"`
+	Definition    BuildDefinition       `json:"definition"`
+	SourceBranch  string                `json:"sourceBranch"`
+	SourceVersion string                `json:"sourceVersion"`
+	RequestedFor  Identity              `json:"requestedFor"`
+	Project       TeamProject           `json:"project"`
+	Links         BuildLinks            `json:"_links"`
+	Stages        []BuildTimelineRecord `json:"-"` // Populated separately via timeline API
 }
 
 // BuildDefinition represents a build pipeline definition

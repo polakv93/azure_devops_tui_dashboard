@@ -117,21 +117,21 @@ func (m Model) renderBuildsTable() string {
 	}
 
 	// Calculate dynamic column widths based on screen width
-	// Fixed columns: Status(12), Result(12), Created(18), Duration(10) = 52
+	// Fixed columns: StagesOrStatus(40), Created(18), Duration(10) = 68
 	// Variable columns: Pipeline, Branch
-	fixedWidth := 12 + 12 + 18 + 10 + 5 // +5 for spacing
+	fixedWidth := 40 + 18 + 10 + 4 // +4 for spacing
 	availableWidth := m.width - fixedWidth
 	if availableWidth < 40 {
 		availableWidth = 40
 	}
-	pipelineWidth := availableWidth * 55 / 100    // 55% for pipeline
+	pipelineWidth := availableWidth * 60 / 100    // 60% for pipeline
 	branchWidth := availableWidth - pipelineWidth // rest for branch
 
 	var b strings.Builder
 
 	// Header
-	headerFmt := fmt.Sprintf("%%-%ds %%-%ds %%-12s %%-12s %%-18s %%-10s", pipelineWidth, branchWidth)
-	header := fmt.Sprintf(headerFmt, "Pipeline", "Branch", "Status", "Result", "Created", "Duration")
+	headerFmt := fmt.Sprintf("%%-%ds %%-%ds %%-40s %%-18s %%-10s", pipelineWidth, branchWidth)
+	header := fmt.Sprintf(headerFmt, "Pipeline", "Branch", "Stages / Status", "Created", "Duration")
 	b.WriteString(styles.TableHeaderStyle.Render(header))
 	b.WriteString("\n")
 
@@ -139,16 +139,12 @@ func (m Model) renderBuildsTable() string {
 	for i, build := range builds {
 		pipeline := truncate(build.Definition.Name, pipelineWidth-2)
 		branch := truncate(build.GetBranchName(), branchWidth-2)
-		status := string(build.Status)
-		result := string(build.Result)
+		stagesDisplay := renderBuildStages(build)
 		created := formatCreatedTime(build.QueueTime)
 		duration := formatDuration(build.GetDuration())
 
-		statusDisplay := styles.GetStatusStyle(status).Render(fmt.Sprintf("%-12s", status))
-		resultDisplay := styles.GetStatusStyle(result).Render(fmt.Sprintf("%-12s", result))
-
-		rowFmt := fmt.Sprintf("%%-%ds %%-%ds %%s %%s %%-18s %%-10s", pipelineWidth, branchWidth)
-		row := fmt.Sprintf(rowFmt, pipeline, branch, statusDisplay, resultDisplay, created, duration)
+		rowFmt := fmt.Sprintf("%%-%ds %%-%ds %%s %%-18s %%-10s", pipelineWidth, branchWidth)
+		row := fmt.Sprintf(rowFmt, pipeline, branch, stagesDisplay, created, duration)
 
 		// Only show selection if Builds section is active
 		if i == m.selectedRow && m.activeTab == TabBuilds {
@@ -388,6 +384,79 @@ func colorizeEnvIcon(icon string, status api.EnvironmentStatus) string {
 		return styles.QueuedStyle.Render(icon)
 	case api.EnvironmentStatusPartiallySucceeded:
 		return styles.CanceledStyle.Render(icon)
+	default:
+		return styles.NotStartedStyle.Render(icon)
+	}
+}
+
+// renderBuildStages renders build stage summary with colored status icons.
+// When no stages are available, falls back to Status/Result display.
+func renderBuildStages(build api.Build) string {
+	if len(build.Stages) == 0 {
+		status := string(build.Status)
+		result := string(build.Result)
+		statusStr := styles.GetStatusStyle(status).Render(fmt.Sprintf("%-12s", status))
+		resultStr := styles.GetStatusStyle(result).Render(fmt.Sprintf("%-12s", result))
+		return fmt.Sprintf("%s %s", statusStr, resultStr)
+	}
+
+	var parts []string
+	for _, stage := range build.Stages {
+		icon := getBuildStageIcon(stage)
+		coloredIcon := colorizeBuildStageIcon(icon, stage)
+		parts = append(parts, stage.Name+":"+coloredIcon)
+	}
+
+	return strings.Join(parts, " → ")
+}
+
+// getBuildStageIcon returns the icon for a build stage based on its state and result
+func getBuildStageIcon(record api.BuildTimelineRecord) string {
+	switch record.State {
+	case api.BuildTimelineRecordStateCompleted:
+		switch record.Result {
+		case api.BuildTimelineRecordResultSucceeded:
+			return "✓"
+		case api.BuildTimelineRecordResultSucceededWithIssues:
+			return "◐"
+		case api.BuildTimelineRecordResultFailed:
+			return "✗"
+		case api.BuildTimelineRecordResultCanceled, api.BuildTimelineRecordResultAbandoned:
+			return "⊘"
+		case api.BuildTimelineRecordResultSkipped:
+			return "⊝"
+		default:
+			return "?"
+		}
+	case api.BuildTimelineRecordStateInProgress:
+		return "●"
+	case api.BuildTimelineRecordStatePending:
+		return "○"
+	default:
+		return "○"
+	}
+}
+
+// colorizeBuildStageIcon applies color to a build stage icon
+func colorizeBuildStageIcon(icon string, record api.BuildTimelineRecord) string {
+	switch record.State {
+	case api.BuildTimelineRecordStateCompleted:
+		switch record.Result {
+		case api.BuildTimelineRecordResultSucceeded:
+			return styles.SucceededStyle.Render(icon)
+		case api.BuildTimelineRecordResultSucceededWithIssues:
+			return styles.CanceledStyle.Render(icon)
+		case api.BuildTimelineRecordResultFailed:
+			return styles.FailedStyle.Render(icon)
+		case api.BuildTimelineRecordResultCanceled, api.BuildTimelineRecordResultAbandoned:
+			return styles.CanceledStyle.Render(icon)
+		case api.BuildTimelineRecordResultSkipped:
+			return styles.NotStartedStyle.Render(icon)
+		default:
+			return styles.NotStartedStyle.Render(icon)
+		}
+	case api.BuildTimelineRecordStateInProgress:
+		return styles.InProgressStyle.Render(icon)
 	default:
 		return styles.NotStartedStyle.Render(icon)
 	}

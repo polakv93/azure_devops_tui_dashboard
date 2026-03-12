@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/time/rate"
@@ -160,6 +161,20 @@ func (c *Client) GetBuilds(ctx context.Context, project string, definitionIDs []
 		builds = builds[:maxCount]
 	}
 
+	// Fetch timeline stages for each build in parallel
+	var wg sync.WaitGroup
+	for i := range builds {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			stages, err := c.GetBuildTimeline(ctx, project, builds[i].ID)
+			if err == nil {
+				builds[i].Stages = stages
+			}
+		}(i)
+	}
+	wg.Wait()
+
 	return builds, nil
 }
 
@@ -181,6 +196,39 @@ func filterBuildsByBranches(builds []Build, branches []string) []Build {
 		}
 	}
 	return filtered
+}
+
+// GetBuildTimeline fetches the timeline records for a build and returns only Stage-type records
+func (c *Client) GetBuildTimeline(ctx context.Context, project string, buildID int) ([]BuildTimelineRecord, error) {
+	url := fmt.Sprintf("%s/%s/%s/_apis/build/builds/%d/timeline?api-version=7.0",
+		c.baseURL, c.organization, project, buildID)
+
+	body, err := c.doRequest(ctx, url)
+	if err != nil {
+		return nil, err
+	}
+
+	var response BuildTimelineResponse
+	if err := json.Unmarshal(body, &response); err != nil {
+		return nil, fmt.Errorf("failed to parse timeline response: %w", err)
+	}
+
+	// Filter to Stage-type records only and sort by order
+	var stages []BuildTimelineRecord
+	for _, record := range response.Records {
+		if record.Type == "Stage" {
+			stages = append(stages, record)
+		}
+	}
+
+	// Sort stages by order field
+	for i := 1; i < len(stages); i++ {
+		for j := i; j > 0 && stages[j].Order < stages[j-1].Order; j-- {
+			stages[j], stages[j-1] = stages[j-1], stages[j]
+		}
+	}
+
+	return stages, nil
 }
 
 // GetReleases fetches releases for a project
