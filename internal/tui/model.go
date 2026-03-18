@@ -90,7 +90,25 @@ type Model struct {
 	createPRTitleAuto          bool
 	createPRDescriptionAuto    bool
 	createPREditField          PRCreateEditField
+
+	// Build log viewer
+	showBuildLogViewer  bool
+	buildLogLoading     bool
+	buildLogError       string
+	buildLogProject     string
+	buildLogBuildID     int
+	buildLogBuildName   string
+	buildLogBranch      string
+	buildLogEntries     []api.BuildLog
+	buildLogSelected    int
+	buildLogLines       map[int][]string
+	buildLogLoadedUntil map[int]int
+	buildLogExhausted   map[int]bool
+	buildLogViewportTop int
+	buildLogWrapLines   bool
 }
+
+const buildLogChunkSize = 500
 
 // PRCreateStep represents step in create pull request wizard.
 type PRCreateStep int
@@ -149,6 +167,10 @@ func NewModel(cfg *config.Config) Model {
 		createPRTransitionWorkItem: true,
 		createPRTitleAuto:          true,
 		createPRDescriptionAuto:    true,
+		buildLogLines:              make(map[int][]string),
+		buildLogLoadedUntil:        make(map[int]int),
+		buildLogExhausted:          make(map[int]bool),
+		buildLogWrapLines:          true,
 	}
 }
 
@@ -394,4 +416,63 @@ func (m *Model) resetCreatePRFlow() {
 
 func trimRefPrefix(ref string) string {
 	return strings.TrimPrefix(ref, "refs/heads/")
+}
+
+func (m *Model) resetBuildLogViewer() {
+	m.showBuildLogViewer = false
+	m.buildLogLoading = false
+	m.buildLogError = ""
+	m.buildLogProject = ""
+	m.buildLogBuildID = 0
+	m.buildLogBuildName = ""
+	m.buildLogBranch = ""
+	m.buildLogEntries = nil
+	m.buildLogSelected = 0
+	m.buildLogLines = make(map[int][]string)
+	m.buildLogLoadedUntil = make(map[int]int)
+	m.buildLogExhausted = make(map[int]bool)
+	m.buildLogViewportTop = 0
+}
+
+func (m Model) buildLogContentWidth() int {
+	width := m.width - 10
+	if width < 20 {
+		return 20
+	}
+	return width
+}
+
+func (m Model) buildLogLineSegmentCount(line string, width int) int {
+	if width <= 0 {
+		return 1
+	}
+	runes := []rune(line)
+	if len(runes) == 0 {
+		return 1
+	}
+	segments := len(runes) / width
+	if len(runes)%width != 0 {
+		segments++
+	}
+	if segments < 1 {
+		segments = 1
+	}
+	return segments
+}
+
+func (m Model) buildLogDisplayLineCount(lines []string) int {
+	if len(lines) == 0 {
+		return 0
+	}
+	if !m.buildLogWrapLines {
+		return len(lines)
+	}
+
+	width := m.buildLogContentWidth()
+	total := 0
+	for _, line := range lines {
+		total += m.buildLogLineSegmentCount(line, width)
+	}
+
+	return total
 }

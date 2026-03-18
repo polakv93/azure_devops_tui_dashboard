@@ -75,3 +75,22 @@ type CreatePRDefaultsLoadedMsg struct {
 	Description  string
 	Err          error
 }
+
+// BuildLogsLoadedMsg is sent when build logs list has been loaded.
+type BuildLogsLoadedMsg struct {
+	Project string
+	BuildID int
+	Logs    []api.BuildLog
+	Err     error
+}
+
+// BuildLogChunkLoadedMsg is sent when a chunk of build log lines has been loaded.
+type BuildLogChunkLoadedMsg struct {
+	Project   string
+	BuildID   int
+	LogID     int
+	StartLine int
+	EndLine   int
+	Lines     []string
+	Err       error
+}

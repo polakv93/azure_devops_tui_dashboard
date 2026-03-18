@@ -102,6 +102,10 @@ make run
 | `←/h` | Previous project |
 | `→/l` | Next project |
 | `Enter` | Open selected item in browser |
+| `o` | Open/close pipeline build log viewer (Builds tab) |
+| `w` | Toggle line wrap in build log viewer |
+| `PgUp/b` | Scroll one page up in log viewer |
+| `PgDn/f` | Scroll one page down in log viewer |
 | `c` | Start pull request creation wizard (in Pull Requests tab) |
 | `Space` | Toggle option in PR creation wizard |
 | `Esc` | Back/cancel in PR creation wizard |

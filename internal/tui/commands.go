@@ -311,3 +311,51 @@ func loadCreatePRDefaults(client *api.Client, projectName, repositoryID, sourceB
 		}
 	}
 }
+
+// loadBuildLogs fetches all logs descriptors for a specific build.
+func loadBuildLogs(client *api.Client, project string, buildID int) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		logs, err := client.GetBuildLogs(ctx, project, buildID)
+		if err != nil {
+			return BuildLogsLoadedMsg{Project: project, BuildID: buildID, Err: err}
+		}
+
+		sort.SliceStable(logs, func(i, j int) bool {
+			return logs[i].ID < logs[j].ID
+		})
+
+		return BuildLogsLoadedMsg{Project: project, BuildID: buildID, Logs: logs}
+	}
+}
+
+// loadBuildLogChunk fetches a selected line range from a build log.
+func loadBuildLogChunk(client *api.Client, project string, buildID, logID, startLine, endLine int) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		lines, err := client.GetBuildLogLines(ctx, project, buildID, logID, startLine, endLine)
+		if err != nil {
+			return BuildLogChunkLoadedMsg{
+				Project:   project,
+				BuildID:   buildID,
+				LogID:     logID,
+				StartLine: startLine,
+				EndLine:   endLine,
+				Err:       err,
+			}
+		}
+
+		return BuildLogChunkLoadedMsg{
+			Project:   project,
+			BuildID:   buildID,
+			LogID:     logID,
+			StartLine: startLine,
+			EndLine:   endLine,
+			Lines:     lines,
+		}
+	}
+}

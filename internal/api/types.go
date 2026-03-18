@@ -102,6 +102,22 @@ type BuildsResponse struct {
 	Value []Build `json:"value"`
 }
 
+// BuildLog represents a build log descriptor.
+type BuildLog struct {
+	ID            int       `json:"id"`
+	Type          string    `json:"type"`
+	URL           string    `json:"url"`
+	CreatedOn     time.Time `json:"createdOn"`
+	LastChangedOn time.Time `json:"lastChangedOn"`
+	LineCount     int       `json:"lineCount"`
+}
+
+// BuildLogsResponse represents the API response for build logs.
+type BuildLogsResponse struct {
+	Count int        `json:"count"`
+	Value []BuildLog `json:"value"`
+}
+
 // ReleaseStatus represents the status of a release
 type ReleaseStatus string
 

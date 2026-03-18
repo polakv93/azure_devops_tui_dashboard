@@ -18,6 +18,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		if m.showBuildLogViewer {
+			return m.handleBuildLogViewerKeyMsg(msg)
+		}
 		if m.creatingPullRequest {
 			return m.handleCreatePRKeyMsg(msg)
 		}
@@ -153,6 +156,64 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			refreshTicker(m.config.Display.RefreshInterval),
 		)
 
+	case BuildLogsLoadedMsg:
+		if msg.Project != m.buildLogProject || msg.BuildID != m.buildLogBuildID {
+			return m, nil
+		}
+
+		m.buildLogLoading = false
+		if msg.Err != nil {
+			m.buildLogError = msg.Err.Error()
+			return m, nil
+		}
+
+		m.buildLogError = ""
+		m.buildLogEntries = msg.Logs
+		m.buildLogSelected = 0
+		m.buildLogViewportTop = 0
+		m.buildLogLines = make(map[int][]string)
+		m.buildLogLoadedUntil = make(map[int]int)
+		m.buildLogExhausted = make(map[int]bool)
+		if len(m.buildLogEntries) == 0 {
+			m.buildLogError = "no logs found for selected build"
+			return m, nil
+		}
+
+		entry := m.buildLogEntries[m.buildLogSelected]
+		m.buildLogLoading = true
+		return m, loadBuildLogChunk(m.client, m.buildLogProject, m.buildLogBuildID, entry.ID, 1, buildLogChunkSize)
+
+	case BuildLogChunkLoadedMsg:
+		if msg.Project != m.buildLogProject || msg.BuildID != m.buildLogBuildID {
+			return m, nil
+		}
+		if m.buildLogSelected < 0 || m.buildLogSelected >= len(m.buildLogEntries) {
+			return m, nil
+		}
+		selectedLogID := m.buildLogEntries[m.buildLogSelected].ID
+		if msg.LogID != selectedLogID {
+			return m, nil
+		}
+
+		m.buildLogLoading = false
+		if msg.Err != nil {
+			m.buildLogError = msg.Err.Error()
+			return m, nil
+		}
+
+		m.buildLogError = ""
+		if len(msg.Lines) == 0 {
+			m.buildLogExhausted[msg.LogID] = true
+			return m, nil
+		}
+
+		m.buildLogLines[msg.LogID] = append(m.buildLogLines[msg.LogID], msg.Lines...)
+		m.buildLogLoadedUntil[msg.LogID] = msg.StartLine + len(msg.Lines)
+		if len(msg.Lines) < buildLogChunkSize {
+			m.buildLogExhausted[msg.LogID] = true
+		}
+		return m, nil
+
 	case RefreshTickMsg:
 		return m.handleRefresh()
 
@@ -179,6 +240,11 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, m.keys.Help):
 		m.showHelp = !m.showHelp
 		m.help.ShowAll = m.showHelp
+		return m, nil
+
+	case msg.String() == "w":
+		m.buildLogWrapLines = !m.buildLogWrapLines
+		m.buildLogViewportTop = 0
 		return m, nil
 
 	case key.Matches(msg, m.keys.Tab):
@@ -217,6 +283,10 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.createPRSuccess = ""
 		return m.handleEnter()
 
+	case key.Matches(msg, m.keys.Logs):
+		m.createPRSuccess = ""
+		return m.handleOpenBuildLogs()
+
 	case key.Matches(msg, m.keys.Create):
 		m.createPRSuccess = ""
 		m.activeTab = TabPullRequests
@@ -248,6 +318,164 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+func (m Model) handleOpenBuildLogs() (tea.Model, tea.Cmd) {
+	if m.activeTab != TabBuilds {
+		return m, nil
+	}
+
+	builds := m.CurrentBuilds()
+	if m.selectedRow < 0 || m.selectedRow >= len(builds) {
+		return m, nil
+	}
+
+	selected := builds[m.selectedRow]
+	m.showBuildLogViewer = true
+	m.buildLogLoading = true
+	m.buildLogError = ""
+	m.buildLogProject = m.CurrentProject().Name
+	m.buildLogBuildID = selected.ID
+	m.buildLogBuildName = selected.Definition.Name
+	m.buildLogBranch = selected.GetBranchName()
+	m.buildLogEntries = nil
+	m.buildLogSelected = 0
+	m.buildLogLines = make(map[int][]string)
+	m.buildLogLoadedUntil = make(map[int]int)
+	m.buildLogExhausted = make(map[int]bool)
+	m.buildLogViewportTop = 0
+
+	return m, loadBuildLogs(m.client, m.buildLogProject, m.buildLogBuildID)
+}
+
+func (m Model) handleBuildLogViewerKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch {
+	case key.Matches(msg, m.keys.Quit):
+		return m, tea.Quit
+
+	case key.Matches(msg, m.keys.Back), key.Matches(msg, m.keys.Logs):
+		m.resetBuildLogViewer()
+		return m, nil
+
+	case key.Matches(msg, m.keys.Help):
+		m.showHelp = !m.showHelp
+		m.help.ShowAll = m.showHelp
+		return m, nil
+
+	case key.Matches(msg, m.keys.Up):
+		if len(m.buildLogEntries) == 0 {
+			return m, nil
+		}
+		if m.buildLogSelected > 0 {
+			m.buildLogSelected--
+			m.buildLogViewportTop = 0
+			entry := m.buildLogEntries[m.buildLogSelected]
+			if _, ok := m.buildLogLines[entry.ID]; !ok {
+				m.buildLogLoading = true
+				m.buildLogError = ""
+				return m, loadBuildLogChunk(m.client, m.buildLogProject, m.buildLogBuildID, entry.ID, 1, buildLogChunkSize)
+			}
+		}
+		return m, nil
+
+	case key.Matches(msg, m.keys.Down):
+		if len(m.buildLogEntries) == 0 {
+			return m, nil
+		}
+		if m.buildLogSelected < len(m.buildLogEntries)-1 {
+			m.buildLogSelected++
+			m.buildLogViewportTop = 0
+			entry := m.buildLogEntries[m.buildLogSelected]
+			if _, ok := m.buildLogLines[entry.ID]; !ok {
+				m.buildLogLoading = true
+				m.buildLogError = ""
+				return m, loadBuildLogChunk(m.client, m.buildLogProject, m.buildLogBuildID, entry.ID, 1, buildLogChunkSize)
+			}
+		}
+		return m, nil
+
+	case key.Matches(msg, m.keys.PageUp):
+		page := m.buildLogViewportHeight()
+		if page < 1 {
+			page = 20
+		}
+		m.buildLogViewportTop -= page
+		if m.buildLogViewportTop < 0 {
+			m.buildLogViewportTop = 0
+		}
+		return m, nil
+
+	case key.Matches(msg, m.keys.PageDown):
+		entry := m.currentBuildLogEntry()
+		if entry == nil {
+			return m, nil
+		}
+		lines := m.buildLogLines[entry.ID]
+		page := m.buildLogViewportHeight()
+		if page < 1 {
+			page = 20
+		}
+		m.buildLogViewportTop += page
+		maxTop := m.buildLogDisplayLineCount(lines) - 1
+		if maxTop < 0 {
+			maxTop = 0
+		}
+		if m.buildLogViewportTop > maxTop {
+			m.buildLogViewportTop = maxTop
+		}
+
+		if !m.buildLogLoading && !m.buildLogExhausted[entry.ID] && m.shouldFetchMoreBuildLogLines(entry.ID, page) {
+			start := m.buildLogLoadedUntil[entry.ID] + 1
+			if start < 1 {
+				start = 1
+			}
+			m.buildLogLoading = true
+			m.buildLogError = ""
+			return m, loadBuildLogChunk(m.client, m.buildLogProject, m.buildLogBuildID, entry.ID, start, start+buildLogChunkSize-1)
+		}
+
+		return m, nil
+
+	case key.Matches(msg, m.keys.Refresh):
+		entry := m.currentBuildLogEntry()
+		if entry == nil {
+			return m, nil
+		}
+		m.buildLogLines[entry.ID] = nil
+		m.buildLogLoadedUntil[entry.ID] = 0
+		m.buildLogExhausted[entry.ID] = false
+		m.buildLogViewportTop = 0
+		m.buildLogLoading = true
+		m.buildLogError = ""
+		return m, loadBuildLogChunk(m.client, m.buildLogProject, m.buildLogBuildID, entry.ID, 1, buildLogChunkSize)
+	}
+
+	return m, nil
+}
+
+func (m Model) currentBuildLogEntry() *api.BuildLog {
+	if m.buildLogSelected < 0 || m.buildLogSelected >= len(m.buildLogEntries) {
+		return nil
+	}
+	entry := m.buildLogEntries[m.buildLogSelected]
+	return &entry
+}
+
+func (m Model) buildLogViewportHeight() int {
+	h := m.height - 16
+	if h < 8 {
+		return 8
+	}
+	return h
+}
+
+func (m Model) shouldFetchMoreBuildLogLines(logID int, page int) bool {
+	lines := m.buildLogLines[logID]
+	if len(lines) == 0 {
+		return true
+	}
+	threshold := m.buildLogViewportTop + (page * 2)
+	return threshold >= m.buildLogDisplayLineCount(lines)
 }
 
 func (m *Model) handleCreatePRKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {

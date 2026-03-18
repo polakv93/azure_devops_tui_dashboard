@@ -16,6 +16,10 @@ func (m Model) View() string {
 		return "Loading..."
 	}
 
+	if m.showBuildLogViewer {
+		return m.renderBuildLogViewer()
+	}
+
 	var b strings.Builder
 
 	// Title
@@ -632,4 +636,154 @@ func colorizeBuildStageIcon(icon string, record api.BuildTimelineRecord) string 
 	default:
 		return styles.NotStartedStyle.Render(icon)
 	}
+}
+
+func (m Model) renderBuildLogViewer() string {
+	var b strings.Builder
+
+	title := fmt.Sprintf(" Build Logs - %s #%d ", m.buildLogBuildName, m.buildLogBuildID)
+	b.WriteString(styles.ActiveTabStyle.Render(title))
+	b.WriteString("\n")
+	b.WriteString(styles.HelpStyle.Render(fmt.Sprintf("Project: %s | Branch: %s", m.buildLogProject, m.buildLogBranch)))
+	b.WriteString("\n")
+	wrapState := "ON"
+	if !m.buildLogWrapLines {
+		wrapState = "OFF"
+	}
+	b.WriteString(styles.HelpStyle.Render(fmt.Sprintf("Esc/o close | Up/Down switch log file | PgUp/PgDn scroll | r reload current log | w wrap: %s", wrapState)))
+	b.WriteString("\n\n")
+
+	if m.buildLogError != "" {
+		b.WriteString(styles.ErrorStyle.Render("Error: " + m.buildLogError))
+		b.WriteString("\n\n")
+	}
+
+	if len(m.buildLogEntries) == 0 {
+		if m.buildLogLoading {
+			b.WriteString(m.spinner.View() + " Loading log files...")
+		} else {
+			b.WriteString(styles.HelpStyle.Render("No log files available"))
+		}
+		b.WriteString("\n\n")
+		b.WriteString(styles.HelpStyle.Render(m.help.View(m.keys)))
+		return b.String()
+	}
+
+	b.WriteString(styles.TableHeaderStyle.Render("Log files"))
+	b.WriteString("\n")
+	for i, entry := range m.buildLogEntries {
+		label := fmt.Sprintf("%d. log %d", i+1, entry.ID)
+		if entry.LineCount > 0 {
+			label = fmt.Sprintf("%s (%d lines)", label, entry.LineCount)
+		}
+		if i == m.buildLogSelected {
+			label = styles.SelectedRowStyle.Render("► " + label)
+		} else {
+			label = "  " + label
+		}
+		b.WriteString(label)
+		b.WriteString("\n")
+	}
+
+	b.WriteString("\n")
+	b.WriteString(styles.TableHeaderStyle.Render("Log content"))
+	b.WriteString("\n")
+
+	entry := m.currentBuildLogEntry()
+	if entry == nil {
+		b.WriteString(styles.HelpStyle.Render("No log selected"))
+		b.WriteString("\n")
+		return b.String()
+	}
+
+	lines := m.buildLogLines[entry.ID]
+	if len(lines) == 0 {
+		if m.buildLogLoading {
+			b.WriteString(m.spinner.View() + " Loading log content...")
+		} else {
+			b.WriteString(styles.HelpStyle.Render("Log content is empty"))
+		}
+		b.WriteString("\n")
+		return b.String()
+	}
+
+	height := m.buildLogViewportHeight()
+	contentWidth := m.buildLogContentWidth()
+	displayTotal := m.buildLogDisplayLineCount(lines)
+
+	startDisplay := m.buildLogViewportTop
+	if startDisplay < 0 {
+		startDisplay = 0
+	}
+	if displayTotal > 0 && startDisplay >= displayTotal {
+		startDisplay = displayTotal - 1
+	}
+	if startDisplay < 0 {
+		startDisplay = 0
+	}
+	endDisplay := startDisplay + height
+	if endDisplay > displayTotal {
+		endDisplay = displayTotal
+	}
+
+	if !m.buildLogWrapLines {
+		start := startDisplay
+		end := endDisplay
+		if end > len(lines) {
+			end = len(lines)
+		}
+		for i := start; i < end; i++ {
+			lineNo := fmt.Sprintf("%6d", i+1)
+			b.WriteString(styles.HelpStyle.Render(lineNo + " | "))
+			b.WriteString(lines[i])
+			b.WriteString("\n")
+		}
+	} else {
+		displayCursor := 0
+		for i, raw := range lines {
+			r := []rune(raw)
+			segments := m.buildLogLineSegmentCount(raw, contentWidth)
+			for seg := 0; seg < segments; seg++ {
+				if displayCursor >= endDisplay {
+					break
+				}
+				if displayCursor >= startDisplay {
+					prefix := "      | "
+					if seg == 0 {
+						prefix = fmt.Sprintf("%6d | ", i+1)
+					}
+					b.WriteString(styles.HelpStyle.Render(prefix))
+
+					chunkStart := seg * contentWidth
+					chunkEnd := chunkStart + contentWidth
+					if chunkStart > len(r) {
+						chunkStart = len(r)
+					}
+					if chunkEnd > len(r) {
+						chunkEnd = len(r)
+					}
+					if chunkStart < chunkEnd {
+						b.WriteString(string(r[chunkStart:chunkEnd]))
+					}
+					b.WriteString("\n")
+				}
+				displayCursor++
+			}
+			if displayCursor >= endDisplay {
+				break
+			}
+		}
+	}
+
+	state := "more lines available"
+	if m.buildLogExhausted[entry.ID] {
+		state = "end of log"
+	}
+	if m.buildLogLoading {
+		state = "loading more lines..."
+	}
+	b.WriteString("\n")
+	b.WriteString(styles.HelpStyle.Render(fmt.Sprintf("Showing rows %d-%d of %d (source lines: %d, wrap: %s, %s)", startDisplay+1, endDisplay, displayTotal, len(lines), wrapState, state)))
+
+	return b.String()
 }

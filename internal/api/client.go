@@ -389,6 +389,99 @@ func (c *Client) GetBuildTimeline(ctx context.Context, project string, buildID i
 	return stages, nil
 }
 
+// GetBuildLogs fetches available logs for a build.
+func (c *Client) GetBuildLogs(ctx context.Context, project string, buildID int) ([]BuildLog, error) {
+	url := fmt.Sprintf("%s/%s/%s/_apis/build/builds/%d/logs?api-version=7.1",
+		c.baseURL, c.organization, project, buildID)
+
+	body, err := c.doRequest(ctx, url)
+	if err != nil {
+		return nil, err
+	}
+
+	var response BuildLogsResponse
+	if err := json.Unmarshal(body, &response); err != nil {
+		return nil, fmt.Errorf("failed to parse build logs response: %w", err)
+	}
+
+	return response.Value, nil
+}
+
+// GetBuildLogLines fetches log lines for a build log with optional line range.
+func (c *Client) GetBuildLogLines(ctx context.Context, project string, buildID, logID int, startLine, endLine int) ([]string, error) {
+	v := url.Values{}
+	v.Set("api-version", "7.1")
+	if startLine > 0 {
+		v.Set("startLine", fmt.Sprintf("%d", startLine))
+	}
+	if endLine > 0 {
+		v.Set("endLine", fmt.Sprintf("%d", endLine))
+	}
+
+	requestURL := fmt.Sprintf("%s/%s/%s/_apis/build/builds/%d/logs/%d?%s",
+		c.baseURL, c.organization, project, buildID, logID, v.Encode())
+
+	body, err := c.doRequest(ctx, requestURL)
+	if err != nil {
+		return nil, err
+	}
+
+	var linesResponse struct {
+		Count int      `json:"count"`
+		Value []string `json:"value"`
+	}
+	if err := json.Unmarshal(body, &linesResponse); err == nil && linesResponse.Value != nil {
+		lines := make([]string, 0, len(linesResponse.Value))
+		for _, line := range linesResponse.Value {
+			line = strings.ReplaceAll(line, "\r\n", "\n")
+			line = strings.ReplaceAll(line, "\r", "\n")
+			if strings.Contains(line, "\n") {
+				lines = append(lines, strings.Split(line, "\n")...)
+				continue
+			}
+			lines = append(lines, line)
+		}
+		for len(lines) > 0 && lines[len(lines)-1] == "" {
+			lines = lines[:len(lines)-1]
+		}
+		return lines, nil
+	}
+
+	text := string(body)
+	var decoded string
+	if err := json.Unmarshal(body, &decoded); err == nil {
+		text = decoded
+	}
+
+	if !strings.Contains(text, "\n") {
+		replacer := strings.NewReplacer(
+			`\\r\\n`, "\n",
+			`\\n`, "\n",
+			`\\r`, "\n",
+			`\r\n`, "\n",
+			`\n`, "\n",
+			`\r`, "\n",
+			`\u000d\u000a`, "\n",
+			`\u000a`, "\n",
+			`\u000d`, "\n",
+		)
+		text = replacer.Replace(text)
+	}
+
+	text = strings.ReplaceAll(text, "\r\n", "\n")
+	text = strings.ReplaceAll(text, "\r", "\n")
+	if text == "" {
+		return []string{}, nil
+	}
+
+	lines := strings.Split(text, "\n")
+	if len(lines) > 0 && lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+
+	return lines, nil
+}
+
 // GetReleases fetches releases for a project
 func (c *Client) GetReleases(ctx context.Context, project string, definitionIDs []int, maxCount int) ([]Release, error) {
 	// Note: Releases API uses a different base URL (vsrm.dev.azure.com)
