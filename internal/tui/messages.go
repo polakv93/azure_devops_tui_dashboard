@@ -39,3 +39,8 @@ type ErrorMsg struct {
 type OpenBrowserMsg struct {
 	URL string
 }
+
+// NotificationErrorMsg is sent when a desktop notification fails.
+type NotificationErrorMsg struct {
+	Err error
+}

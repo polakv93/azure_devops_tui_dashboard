@@ -137,7 +137,11 @@ func (m Model) renderBuildsTable() string {
 
 	// Rows
 	for i, build := range builds {
-		pipeline := truncate(build.Definition.Name, pipelineWidth-2)
+		pipelineName := build.Definition.Name
+		if m.isBuildDefinitionWatched(m.CurrentProject().Name, build.Definition.ID) {
+			pipelineName = "[N] " + pipelineName
+		}
+		pipeline := truncate(pipelineName, pipelineWidth-2)
 		branch := truncate(build.GetBranchName(), branchWidth-2)
 		stagesDisplay := renderBuildStages(build)
 		created := formatCreatedTime(build.QueueTime)
@@ -187,7 +191,11 @@ func (m Model) renderReleasesTable() string {
 
 	// Rows
 	for i, release := range releases {
-		name := truncate(release.Name, releaseWidth-2)
+		releaseName := release.Name
+		if m.isReleaseDefinitionWatched(m.CurrentProject().Name, release.ReleaseDefinition.ID) {
+			releaseName = "[N] " + releaseName
+		}
+		name := truncate(releaseName, releaseWidth-2)
 		definition := truncate(release.ReleaseDefinition.Name, definitionWidth-2)
 		status := string(release.Status)
 		created := formatCreatedTime(release.CreatedOn)
@@ -298,6 +306,10 @@ func (m Model) renderStatusBar() string {
 	}
 	if loadingCount > 0 {
 		parts = append(parts, m.spinner.View()+" Loading...")
+	}
+
+	if m.notificationError != nil {
+		parts = append(parts, styles.ErrorStyle.Render("Notification error: "+m.notificationError.Error()))
 	}
 
 	return styles.StatusBarStyle.Render(strings.Join(parts, " | "))

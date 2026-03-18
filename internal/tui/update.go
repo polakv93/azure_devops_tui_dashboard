@@ -1,11 +1,13 @@
 package tui
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/polakv93/azure_devops_tui_dashboard/internal/api"
 )
 
 // Update handles messages and updates the model
@@ -28,9 +30,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.errors[msg.Project+"-builds"] = msg.Err
 		} else {
 			delete(m.errors, msg.Project+"-builds")
+			cmds = append(cmds, m.buildCompletionNotificationCmds(msg.Project, msg.Builds)...)
 			m.builds[msg.Project] = msg.Builds
 		}
-		return m, nil
+		return m, tea.Batch(cmds...)
 
 	case ReleasesLoadedMsg:
 		m.loadingReleases[msg.Project] = false
@@ -38,9 +41,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.errors[msg.Project+"-releases"] = msg.Err
 		} else {
 			delete(m.errors, msg.Project+"-releases")
+			cmds = append(cmds, m.releaseCompletionNotificationCmds(msg.Project, msg.Releases)...)
 			m.releases[msg.Project] = msg.Releases
 		}
-		return m, nil
+		return m, tea.Batch(cmds...)
 
 	case PullRequestsLoadedMsg:
 		m.loadingPullRequests[msg.Project] = false
@@ -60,6 +64,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.spinner, cmd = m.spinner.Update(msg)
 		cmds = append(cmds, cmd)
 		return m, tea.Batch(cmds...)
+
+	case NotificationErrorMsg:
+		m.notificationError = msg.Err
+		return m, nil
 	}
 
 	return m, nil
@@ -111,11 +119,130 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, m.keys.Enter):
 		return m.handleEnter()
 
+	case key.Matches(msg, m.keys.Notify):
+		switch m.activeTab {
+		case TabBuilds:
+			m.toggleBuildDefinitionWatch()
+		case TabReleases:
+			m.toggleReleaseDefinitionWatch()
+		}
+		return m, nil
+
 	case key.Matches(msg, m.keys.Refresh):
 		return m.handleRefresh()
 	}
 
 	return m, nil
+}
+
+// buildCompletionNotificationCmds returns notification commands for watched build definitions.
+func (m *Model) buildCompletionNotificationCmds(project string, builds []api.Build) []tea.Cmd {
+	known := m.knownBuildCompletion[project]
+	if known == nil {
+		known = make(map[int]bool)
+	}
+
+	watched := m.watchedBuildDefinitions[project]
+	initialized := m.buildSnapshotInitialized[project]
+
+	var cmds []tea.Cmd
+	newKnown := make(map[int]bool, len(builds))
+
+	for _, build := range builds {
+		completed := build.IsCompleted()
+		newKnown[build.ID] = completed
+
+		if !watched[build.Definition.ID] {
+			continue
+		}
+
+		if !initialized {
+			continue
+		}
+
+		prevCompleted := known[build.ID]
+		if completed && !prevCompleted {
+			title := fmt.Sprintf("Pipeline finished: %s", build.Definition.Name)
+			body := fmt.Sprintf("Project: %s | Result: %s", project, build.GetStatusString())
+			cmds = append(cmds, notifyDesktop(title, body))
+		}
+	}
+
+	m.knownBuildCompletion[project] = newKnown
+	m.buildSnapshotInitialized[project] = true
+
+	return cmds
+}
+
+// releaseCompletionNotificationCmds returns notification commands for watched release definitions.
+func (m *Model) releaseCompletionNotificationCmds(project string, releases []api.Release) []tea.Cmd {
+	known := m.knownReleaseCompletion[project]
+	if known == nil {
+		known = make(map[int]bool)
+	}
+
+	watched := m.watchedReleaseDefinitions[project]
+	initialized := m.releaseSnapshotInitialized[project]
+
+	var cmds []tea.Cmd
+	newKnown := make(map[int]bool, len(releases))
+
+	for _, release := range releases {
+		completed := isReleaseCompleted(release)
+		newKnown[release.ID] = completed
+
+		if !watched[release.ReleaseDefinition.ID] {
+			continue
+		}
+
+		if !initialized {
+			continue
+		}
+
+		prevCompleted := known[release.ID]
+		if completed && !prevCompleted {
+			title := fmt.Sprintf("Release finished: %s", release.ReleaseDefinition.Name)
+			body := fmt.Sprintf("Project: %s | Release: %s | Status: %s", project, release.Name, releaseCompletionStatus(release))
+			cmds = append(cmds, notifyDesktop(title, body))
+		}
+	}
+
+	m.knownReleaseCompletion[project] = newKnown
+	m.releaseSnapshotInitialized[project] = true
+
+	return cmds
+}
+
+// isReleaseCompleted returns true if release is no longer progressing.
+func isReleaseCompleted(release api.Release) bool {
+	if release.Status == api.ReleaseStatusAbandoned {
+		return true
+	}
+
+	if len(release.Environments) == 0 {
+		return release.Status != api.ReleaseStatusActive
+	}
+
+	for _, env := range release.Environments {
+		switch env.Status {
+		case api.EnvironmentStatusInProgress,
+			api.EnvironmentStatusQueued,
+			api.EnvironmentStatusScheduled,
+			api.EnvironmentStatusNotStarted:
+			return false
+		}
+	}
+
+	return true
+}
+
+// releaseCompletionStatus returns a user-facing completion status for notification text.
+func releaseCompletionStatus(release api.Release) string {
+	if release.Status == api.ReleaseStatusAbandoned {
+		return string(release.Status)
+	}
+
+	return string(release.GetOverallStatus())
 }
 
 // handleEnter opens the selected build/release/pull request in the browser

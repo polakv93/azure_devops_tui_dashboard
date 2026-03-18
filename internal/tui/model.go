@@ -49,7 +49,18 @@ type Model struct {
 	errors map[string]error
 
 	// Last refresh time
-	lastRefresh time.Time
+	lastRefresh       time.Time
+	notificationError error
+
+	// Session-only notification watches (project -> definition ID -> watched)
+	watchedBuildDefinitions   map[string]map[int]bool
+	watchedReleaseDefinitions map[string]map[int]bool
+
+	// Previous completion snapshots for transition detection
+	knownBuildCompletion       map[string]map[int]bool // project -> build ID -> completed
+	knownReleaseCompletion     map[string]map[int]bool // project -> release ID -> completed
+	buildSnapshotInitialized   map[string]bool         // project -> snapshot initialized
+	releaseSnapshotInitialized map[string]bool         // project -> snapshot initialized
 
 	// Components
 	spinner spinner.Model
@@ -67,21 +78,27 @@ func NewModel(cfg *config.Config) Model {
 	h.ShowAll = false
 
 	return Model{
-		config:              cfg,
-		client:              newClientFromConfig(cfg),
-		activeTab:           TabBuilds,
-		activeProject:       0,
-		selectedRow:         0,
-		builds:              make(map[string][]api.Build),
-		releases:            make(map[string][]api.Release),
-		pullRequests:        make(map[string][]api.PullRequest),
-		loadingBuilds:       make(map[string]bool),
-		loadingReleases:     make(map[string]bool),
-		loadingPullRequests: make(map[string]bool),
-		errors:              make(map[string]error),
-		spinner:             s,
-		help:                h,
-		keys:                DefaultKeyMap(),
+		config:                     cfg,
+		client:                     newClientFromConfig(cfg),
+		activeTab:                  TabBuilds,
+		activeProject:              0,
+		selectedRow:                0,
+		builds:                     make(map[string][]api.Build),
+		releases:                   make(map[string][]api.Release),
+		pullRequests:               make(map[string][]api.PullRequest),
+		loadingBuilds:              make(map[string]bool),
+		loadingReleases:            make(map[string]bool),
+		loadingPullRequests:        make(map[string]bool),
+		errors:                     make(map[string]error),
+		watchedBuildDefinitions:    make(map[string]map[int]bool),
+		watchedReleaseDefinitions:  make(map[string]map[int]bool),
+		knownBuildCompletion:       make(map[string]map[int]bool),
+		knownReleaseCompletion:     make(map[string]map[int]bool),
+		buildSnapshotInitialized:   make(map[string]bool),
+		releaseSnapshotInitialized: make(map[string]bool),
+		spinner:                    s,
+		help:                       h,
+		keys:                       DefaultKeyMap(),
 	}
 }
 
@@ -103,6 +120,10 @@ func (m Model) Init() tea.Cmd {
 		m.loadingBuilds[p.Name] = true
 		m.loadingReleases[p.Name] = true
 		m.loadingPullRequests[p.Name] = true
+		m.watchedBuildDefinitions[p.Name] = make(map[int]bool)
+		m.watchedReleaseDefinitions[p.Name] = make(map[int]bool)
+		m.knownBuildCompletion[p.Name] = make(map[int]bool)
+		m.knownReleaseCompletion[p.Name] = make(map[int]bool)
 	}
 
 	return tea.Batch(
@@ -243,4 +264,56 @@ func (m Model) MaxRows() int {
 		return len(m.CurrentPullRequests())
 	}
 	return 0
+}
+
+// toggleBuildDefinitionWatch toggles build definition watch for current selection.
+func (m *Model) toggleBuildDefinitionWatch() {
+	builds := m.CurrentBuilds()
+	if m.selectedRow < 0 || m.selectedRow >= len(builds) {
+		return
+	}
+
+	project := m.CurrentProject().Name
+	definitionID := builds[m.selectedRow].Definition.ID
+
+	if m.watchedBuildDefinitions[project] == nil {
+		m.watchedBuildDefinitions[project] = make(map[int]bool)
+	}
+
+	if m.watchedBuildDefinitions[project][definitionID] {
+		delete(m.watchedBuildDefinitions[project], definitionID)
+		return
+	}
+	m.watchedBuildDefinitions[project][definitionID] = true
+}
+
+// toggleReleaseDefinitionWatch toggles release definition watch for current selection.
+func (m *Model) toggleReleaseDefinitionWatch() {
+	releases := m.CurrentReleases()
+	if m.selectedRow < 0 || m.selectedRow >= len(releases) {
+		return
+	}
+
+	project := m.CurrentProject().Name
+	definitionID := releases[m.selectedRow].ReleaseDefinition.ID
+
+	if m.watchedReleaseDefinitions[project] == nil {
+		m.watchedReleaseDefinitions[project] = make(map[int]bool)
+	}
+
+	if m.watchedReleaseDefinitions[project][definitionID] {
+		delete(m.watchedReleaseDefinitions[project], definitionID)
+		return
+	}
+	m.watchedReleaseDefinitions[project][definitionID] = true
+}
+
+// isBuildDefinitionWatched returns true if build definition is watched in project.
+func (m Model) isBuildDefinitionWatched(project string, definitionID int) bool {
+	return m.watchedBuildDefinitions[project][definitionID]
+}
+
+// isReleaseDefinitionWatched returns true if release definition is watched in project.
+func (m Model) isReleaseDefinitionWatched(project string, definitionID int) bool {
+	return m.watchedReleaseDefinitions[project][definitionID]
 }

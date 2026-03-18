@@ -100,6 +100,7 @@ make run
 | `←/h` | Previous project |
 | `→/l` | Next project |
 | `Enter` | Open selected item in browser |
+| `n` | Toggle notifications for selected pipeline/release (session only) |
 | `r` | Refresh data |
 | `?` | Toggle help |
 | `q` | Quit |

@@ -2,8 +2,10 @@ package tui
 
 import (
 	"context"
+	"fmt"
 	"os/exec"
 	"runtime"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -30,6 +32,35 @@ func fetchBuilds(client *api.Client, project config.ProjectConfig, maxItems int)
 			Builds:  builds,
 		}
 	}
+}
+
+// notifyDesktop shows a native desktop notification.
+// On Windows it uses a PowerShell WScript popup.
+func notifyDesktop(title, body string) tea.Cmd {
+	return func() tea.Msg {
+		if runtime.GOOS != "windows" {
+			return nil
+		}
+
+		safeTitle := escapePowerShellSingleQuoted(title)
+		safeBody := escapePowerShellSingleQuoted(body)
+
+		script := fmt.Sprintf(
+			"$wshell = New-Object -ComObject WScript.Shell; $null = $wshell.Popup('%s', 0, '%s', 64)",
+			safeBody,
+			safeTitle,
+		)
+
+		cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script)
+		if err := cmd.Start(); err != nil {
+			return NotificationErrorMsg{Err: fmt.Errorf("failed to start desktop notification command: %w", err)}
+		}
+		return nil
+	}
+}
+
+func escapePowerShellSingleQuoted(s string) string {
+	return strings.ReplaceAll(s, "'", "''")
 }
 
 // fetchReleases creates a command to fetch releases for a project
