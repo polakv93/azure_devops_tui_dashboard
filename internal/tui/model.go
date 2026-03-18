@@ -66,7 +66,50 @@ type Model struct {
 	spinner spinner.Model
 	help    help.Model
 	keys    KeyMap
+
+	// Pull request creation flow
+	creatingPullRequest        bool
+	createPRStep               PRCreateStep
+	createPRRepositories       []api.Repository
+	createPRSelectedRepo       int
+	createPRBranches           []string
+	createPRBranchPushTimes    map[string]time.Time
+	createPRSelectedSource     int
+	createPRTargetBranch       string
+	createPRSelectedTarget     int
+	createPROptionCursor       int
+	createPRSetAutoComplete    bool
+	createPRAutoApprove        bool
+	createPRDeleteSourceBranch bool
+	createPRTransitionWorkItem bool
+	createPRLoading            bool
+	createPRError              string
+	createPRSuccess            string
+	createPRTitle              string
+	createPRDescription        string
+	createPRTitleAuto          bool
+	createPRDescriptionAuto    bool
+	createPREditField          PRCreateEditField
 }
+
+// PRCreateStep represents step in create pull request wizard.
+type PRCreateStep int
+
+const (
+	PRCreateStepRepository PRCreateStep = iota
+	PRCreateStepSourceBranch
+	PRCreateStepTargetBranch
+	PRCreateStepOptions
+)
+
+// PRCreateEditField tracks which text field is currently edited in create PR wizard.
+type PRCreateEditField int
+
+const (
+	PRCreateEditFieldNone PRCreateEditField = iota
+	PRCreateEditFieldTitle
+	PRCreateEditFieldDescription
+)
 
 // NewModel creates a new Model with the given configuration
 func NewModel(cfg *config.Config) Model {
@@ -99,6 +142,13 @@ func NewModel(cfg *config.Config) Model {
 		spinner:                    s,
 		help:                       h,
 		keys:                       DefaultKeyMap(),
+		createPRBranchPushTimes:    make(map[string]time.Time),
+		createPRSetAutoComplete:    true,
+		createPRAutoApprove:        true,
+		createPRDeleteSourceBranch: true,
+		createPRTransitionWorkItem: true,
+		createPRTitleAuto:          true,
+		createPRDescriptionAuto:    true,
 	}
 }
 
@@ -316,4 +366,32 @@ func (m Model) isBuildDefinitionWatched(project string, definitionID int) bool {
 // isReleaseDefinitionWatched returns true if release definition is watched in project.
 func (m Model) isReleaseDefinitionWatched(project string, definitionID int) bool {
 	return m.watchedReleaseDefinitions[project][definitionID]
+}
+
+func (m *Model) resetCreatePRFlow() {
+	m.creatingPullRequest = false
+	m.createPRStep = PRCreateStepRepository
+	m.createPRRepositories = nil
+	m.createPRSelectedRepo = 0
+	m.createPRBranches = nil
+	m.createPRBranchPushTimes = make(map[string]time.Time)
+	m.createPRSelectedSource = 0
+	m.createPRTargetBranch = ""
+	m.createPRSelectedTarget = 0
+	m.createPROptionCursor = 0
+	m.createPRSetAutoComplete = true
+	m.createPRAutoApprove = true
+	m.createPRDeleteSourceBranch = true
+	m.createPRTransitionWorkItem = true
+	m.createPRLoading = false
+	m.createPRError = ""
+	m.createPRTitle = ""
+	m.createPRDescription = ""
+	m.createPRTitleAuto = true
+	m.createPRDescriptionAuto = true
+	m.createPREditField = PRCreateEditFieldNone
+}
+
+func trimRefPrefix(ref string) string {
+	return strings.TrimPrefix(ref, "refs/heads/")
 }

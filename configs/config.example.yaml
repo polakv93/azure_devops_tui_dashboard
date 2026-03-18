@@ -9,7 +9,7 @@ azure_devops:
 
   # Personal Access Token - use environment variable for security
   # Create a PAT at: https://dev.azure.com/{org}/_usersSettings/tokens
-  # Required scopes: Build (Read), Release (Read)
+  # Required scopes: Build (Read), Release (Read), Code (Read & Write)
   pat: "${AZURE_DEVOPS_PAT}"
 
 projects:

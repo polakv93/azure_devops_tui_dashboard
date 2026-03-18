@@ -1,6 +1,6 @@
 # Azure DevOps TUI Dashboard
 
-A terminal-based dashboard for monitoring Azure DevOps builds and releases.
+A terminal-based dashboard for monitoring Azure DevOps builds, releases, and pull requests.
 
 ![Go](https://img.shields.io/badge/Go-1.25-blue)
 
@@ -10,6 +10,8 @@ A terminal-based dashboard for monitoring Azure DevOps builds and releases.
 - Switch between projects and views with keyboard navigation
 - Auto-refresh at configurable intervals
 - Open builds/releases directly in browser
+- Create pull requests from branches directly in the TUI
+- Optionally set auto-complete and auto-approve after PR creation
 - Rate limiting to respect Azure DevOps API limits
 
 ## Installation
@@ -74,7 +76,7 @@ This creates binaries in `bin/` for Linux, macOS (Intel + Apple Silicon), and Wi
 
 3. Create a Personal Access Token (PAT):
    - Go to `https://dev.azure.com/{org}/_usersSettings/tokens`
-   - Create token with scopes: **Build (Read)**, **Release (Read)**
+   - Create token with scopes: **Build (Read)**, **Release (Read)**, **Code (Read & Write)**
    - Set the environment variable:
      ```bash
      export AZURE_DEVOPS_PAT="your-token-here"
@@ -94,12 +96,15 @@ make run
 
 | Key | Action |
 |-----|--------|
-| `Tab` | Switch between Builds and Releases |
+| `Tab` | Switch between Builds, Releases, and Pull Requests |
 | `↑/k` | Move up |
 | `↓/j` | Move down |
 | `←/h` | Previous project |
 | `→/l` | Next project |
 | `Enter` | Open selected item in browser |
+| `c` | Start pull request creation wizard (in Pull Requests tab) |
+| `Space` | Toggle option in PR creation wizard |
+| `Esc` | Back/cancel in PR creation wizard |
 | `n` | Toggle notifications for selected pipeline/release (session only) |
 | `r` | Refresh data |
 | `?` | Toggle help |

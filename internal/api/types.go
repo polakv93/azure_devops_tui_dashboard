@@ -38,22 +38,22 @@ const (
 type BuildTimelineRecordResult string
 
 const (
-	BuildTimelineRecordResultSucceeded          BuildTimelineRecordResult = "succeeded"
+	BuildTimelineRecordResultSucceeded           BuildTimelineRecordResult = "succeeded"
 	BuildTimelineRecordResultSucceededWithIssues BuildTimelineRecordResult = "succeededWithIssues"
-	BuildTimelineRecordResultFailed             BuildTimelineRecordResult = "failed"
-	BuildTimelineRecordResultCanceled           BuildTimelineRecordResult = "canceled"
-	BuildTimelineRecordResultSkipped            BuildTimelineRecordResult = "skipped"
-	BuildTimelineRecordResultAbandoned          BuildTimelineRecordResult = "abandoned"
+	BuildTimelineRecordResultFailed              BuildTimelineRecordResult = "failed"
+	BuildTimelineRecordResultCanceled            BuildTimelineRecordResult = "canceled"
+	BuildTimelineRecordResultSkipped             BuildTimelineRecordResult = "skipped"
+	BuildTimelineRecordResultAbandoned           BuildTimelineRecordResult = "abandoned"
 )
 
 // BuildTimelineRecord represents a record in the build timeline (stage, phase, job, task)
 type BuildTimelineRecord struct {
-	ID       string                   `json:"id"`
-	ParentID string                   `json:"parentId"`
-	Name     string                   `json:"name"`
-	Type     string                   `json:"type"` // "Stage", "Phase", "Job", "Task", "Checkpoint"
-	Order    int                      `json:"order"`
-	State    BuildTimelineRecordState `json:"state"`
+	ID       string                    `json:"id"`
+	ParentID string                    `json:"parentId"`
+	Name     string                    `json:"name"`
+	Type     string                    `json:"type"` // "Stage", "Phase", "Job", "Task", "Checkpoint"
+	Order    int                       `json:"order"`
+	State    BuildTimelineRecordState  `json:"state"`
 	Result   BuildTimelineRecordResult `json:"result"`
 }
 
@@ -175,8 +175,91 @@ type ReleasesResponse struct {
 
 // Identity represents a user identity
 type Identity struct {
+	ID          string `json:"id"`
 	DisplayName string `json:"displayName"`
 	UniqueName  string `json:"uniqueName"`
+}
+
+// Repository represents an Azure DevOps Git repository.
+type Repository struct {
+	ID            string      `json:"id"`
+	Name          string      `json:"name"`
+	DefaultBranch string      `json:"defaultBranch"`
+	Project       TeamProject `json:"project"`
+}
+
+// RepositoriesResponse represents the API response for repositories.
+type RepositoriesResponse struct {
+	Count int          `json:"count"`
+	Value []Repository `json:"value"`
+}
+
+// GitRef represents a git reference/branch.
+type GitRef struct {
+	Name string `json:"name"`
+}
+
+// GitRefsResponse represents the API response for git refs.
+type GitRefsResponse struct {
+	Count int      `json:"count"`
+	Value []GitRef `json:"value"`
+}
+
+// PushRefUpdate represents a branch update in a push.
+type PushRefUpdate struct {
+	Name string `json:"name"`
+}
+
+// Push represents a git push event.
+type Push struct {
+	Date       time.Time       `json:"date"`
+	RefUpdates []PushRefUpdate `json:"refUpdates"`
+}
+
+// PushesResponse represents the API response for pushes.
+type PushesResponse struct {
+	Count int    `json:"count"`
+	Value []Push `json:"value"`
+}
+
+// Commit represents a git commit with message.
+type Commit struct {
+	Comment string `json:"comment"`
+}
+
+// CommitsResponse represents the API response for commits.
+type CommitsResponse struct {
+	Count int      `json:"count"`
+	Value []Commit `json:"value"`
+}
+
+// PullRequestCompletionOptions controls pull request completion behavior.
+type PullRequestCompletionOptions struct {
+	DeleteSourceBranch  bool   `json:"deleteSourceBranch,omitempty"`
+	TransitionWorkItems bool   `json:"transitionWorkItems,omitempty"`
+	MergeStrategy       string `json:"mergeStrategy,omitempty"`
+}
+
+// PullRequestCreateRequest is payload for creating a pull request.
+type PullRequestCreateRequest struct {
+	SourceRefName string     `json:"sourceRefName"`
+	TargetRefName string     `json:"targetRefName"`
+	Title         string     `json:"title"`
+	Description   string     `json:"description,omitempty"`
+	Reviewers     []Reviewer `json:"reviewers,omitempty"`
+	IsDraft       bool       `json:"isDraft,omitempty"`
+}
+
+// PullRequestUpdateRequest is payload for updating a pull request.
+type PullRequestUpdateRequest struct {
+	AutoCompleteSetBy *Identity                     `json:"autoCompleteSetBy,omitempty"`
+	CompletionOptions *PullRequestCompletionOptions `json:"completionOptions,omitempty"`
+}
+
+// PullRequestReviewerVoteRequest is payload for setting reviewer vote.
+type PullRequestReviewerVoteRequest struct {
+	ID   string `json:"id"`
+	Vote int    `json:"vote"`
 }
 
 // TeamProject represents a project
@@ -219,6 +302,7 @@ type PullRequest struct {
 
 // Reviewer represents a pull request reviewer
 type Reviewer struct {
+	ID          string `json:"id"`
 	DisplayName string `json:"displayName"`
 	UniqueName  string `json:"uniqueName"`
 	Vote        int    `json:"vote"` // 10=approved, 5=approved with suggestions, 0=no vote, -5=waiting, -10=rejected

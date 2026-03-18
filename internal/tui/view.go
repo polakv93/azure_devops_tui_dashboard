@@ -78,6 +78,16 @@ func (m Model) View() string {
 	b.WriteString("\n\n")
 	b.WriteString(m.renderStatusBar())
 
+	if m.createPRSuccess != "" {
+		b.WriteString("\n")
+		b.WriteString(styles.SucceededStyle.Render("✓ " + m.createPRSuccess))
+	}
+
+	if m.creatingPullRequest {
+		b.WriteString("\n\n")
+		b.WriteString(m.renderCreatePRWizard())
+	}
+
 	// Help
 	b.WriteString("\n")
 	b.WriteString(styles.HelpStyle.Render(m.help.View(m.keys)))
@@ -312,7 +322,157 @@ func (m Model) renderStatusBar() string {
 		parts = append(parts, styles.ErrorStyle.Render("Notification error: "+m.notificationError.Error()))
 	}
 
+	if m.creatingPullRequest {
+		parts = append(parts, styles.InProgressStyle.Render("Create PR mode"))
+	}
+
 	return styles.StatusBarStyle.Render(strings.Join(parts, " | "))
+}
+
+func (m Model) renderCreatePRWizard() string {
+	var b strings.Builder
+
+	b.WriteString(styles.ActiveTabStyle.Render(" Create Pull Request "))
+	b.WriteString("\n")
+	b.WriteString(styles.HelpStyle.Render("Esc back/cancel | Enter next/confirm | Space toggle option"))
+	b.WriteString("\n\n")
+
+	if m.createPRLoading {
+		b.WriteString(m.spinner.View())
+		b.WriteString(" Loading...")
+		b.WriteString("\n")
+	}
+
+	if m.createPRError != "" {
+		b.WriteString(styles.ErrorStyle.Render("Error: " + m.createPRError))
+		b.WriteString("\n\n")
+	}
+
+	b.WriteString(m.renderCreatePRStepHeader(PRCreateStepRepository, "1. Repository"))
+	b.WriteString("\n")
+	for i, repo := range m.createPRRepositories {
+		line := "  " + repo.Name
+		if i == m.createPRSelectedRepo && m.createPRStep == PRCreateStepRepository {
+			line = styles.SelectedRowStyle.Render("► " + repo.Name)
+		}
+		b.WriteString(line)
+		b.WriteString("\n")
+	}
+
+	b.WriteString("\n")
+	b.WriteString(m.renderCreatePRStepHeader(PRCreateStepSourceBranch, "2. Source branch"))
+	b.WriteString("\n")
+	if len(m.createPRBranches) == 0 {
+		b.WriteString(styles.HelpStyle.Render("  (no branches loaded yet)"))
+		b.WriteString("\n")
+	} else {
+		maxRows := 10
+		start := 0
+		if m.createPRSelectedSource >= maxRows {
+			start = m.createPRSelectedSource - maxRows + 1
+		}
+		end := start + maxRows
+		if end > len(m.createPRBranches) {
+			end = len(m.createPRBranches)
+		}
+		for i := start; i < end; i++ {
+			branch := m.createPRBranches[i]
+			timeHint := ""
+			if pushedAt, ok := m.createPRBranchPushTimes[branch]; ok {
+				timeHint = "  " + styles.HelpStyle.Render("("+pushedAt.Local().Format("2006-01-02 15:04")+")")
+			}
+			line := "  " + branch + timeHint
+			if i == m.createPRSelectedSource && m.createPRStep == PRCreateStepSourceBranch {
+				line = styles.SelectedRowStyle.Render("► " + branch + timeHint)
+			}
+			b.WriteString(line)
+			b.WriteString("\n")
+		}
+	}
+
+	b.WriteString("\n")
+	b.WriteString(m.renderCreatePRStepHeader(PRCreateStepTargetBranch, "3. Target branch"))
+	b.WriteString("\n")
+	targets := m.createPRTargetOptions()
+	if len(targets) == 0 {
+		b.WriteString(styles.HelpStyle.Render("  (no target options)"))
+		b.WriteString("\n")
+	} else {
+		for i, target := range targets {
+			line := "  " + target
+			if i == m.createPRSelectedTarget && m.createPRStep == PRCreateStepTargetBranch {
+				line = styles.SelectedRowStyle.Render("► " + target)
+			}
+			b.WriteString(line)
+			b.WriteString("\n")
+		}
+	}
+
+	b.WriteString("\n")
+	b.WriteString(m.renderCreatePRStepHeader(PRCreateStepOptions, "4. Details and options"))
+	b.WriteString("\n")
+	options := []struct {
+		Label   string
+		Value   string
+		IsInput bool
+		Checked bool
+	}{
+		{Label: "Title", Value: m.createPRTitle, IsInput: true},
+		{Label: "Description", Value: m.createPRDescription, IsInput: true},
+		{Label: "Set automatic completion", Checked: m.createPRSetAutoComplete},
+		{Label: "Approve as current user", Checked: m.createPRAutoApprove},
+		{Label: "Delete source branch after merge", Checked: m.createPRDeleteSourceBranch},
+		{Label: "Transition linked work items", Checked: m.createPRTransitionWorkItem},
+	}
+	for i, option := range options {
+		line := ""
+		if option.IsInput {
+			value := option.Value
+			if value == "" {
+				value = "(empty)"
+			}
+			line = "  " + option.Label + ": " + value
+			if m.createPREditField == PRCreateEditFieldTitle && i == 0 {
+				line += styles.HelpStyle.Render("  [editing]")
+			}
+			if m.createPREditField == PRCreateEditFieldDescription && i == 1 {
+				line += styles.HelpStyle.Render("  [editing]")
+			}
+		} else {
+			marker := "[ ]"
+			if option.Checked {
+				marker = "[x]"
+			}
+			line = "  " + marker + " " + option.Label
+		}
+		if i == m.createPROptionCursor && m.createPRStep == PRCreateStepOptions {
+			line = styles.SelectedRowStyle.Render("► " + strings.TrimLeft(line, " "))
+		}
+		b.WriteString(line)
+		b.WriteString("\n")
+	}
+
+	if repo := m.currentCreatePRRepository(); repo != nil && len(m.createPRBranches) > 0 {
+		source := m.createPRBranches[m.createPRSelectedSource]
+		target := m.createPRTargetBranch
+		if target == "" && len(targets) > 0 {
+			target = targets[m.createPRSelectedTarget]
+		}
+		b.WriteString("\n")
+		b.WriteString(styles.HelpStyle.Render(fmt.Sprintf("Will create: %s/%s  %s -> %s", m.CurrentProject().Name, repo.Name, source, target)))
+	}
+
+	return b.String()
+}
+
+func (m Model) renderCreatePRStepHeader(step PRCreateStep, title string) string {
+	if m.createPRStep == step {
+		return styles.ActiveProjectStyle.Render(title)
+	}
+	if m.createPRStep > step {
+		return styles.SucceededStyle.Render("✓ " + title)
+	}
+	return styles.TabStyle.Render(title)
 }
 
 // truncate truncates a string to the specified length

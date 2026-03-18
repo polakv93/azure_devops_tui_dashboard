@@ -12,7 +12,10 @@ type KeyMap struct {
 	Right   key.Binding
 	Tab     key.Binding
 	Enter   key.Binding
+	Space   key.Binding
+	Back    key.Binding
 	Notify  key.Binding
+	Create  key.Binding
 	Refresh key.Binding
 	Help    key.Binding
 	Quit    key.Binding
@@ -45,9 +48,21 @@ func DefaultKeyMap() KeyMap {
 			key.WithKeys("enter"),
 			key.WithHelp("enter", "open in browser"),
 		),
+		Space: key.NewBinding(
+			key.WithKeys(" "),
+			key.WithHelp("space", "toggle option"),
+		),
+		Back: key.NewBinding(
+			key.WithKeys("esc"),
+			key.WithHelp("esc", "cancel/back"),
+		),
 		Notify: key.NewBinding(
 			key.WithKeys("n"),
 			key.WithHelp("n", "toggle notify"),
+		),
+		Create: key.NewBinding(
+			key.WithKeys("c"),
+			key.WithHelp("c", "create PR"),
 		),
 		Refresh: key.NewBinding(
 			key.WithKeys("r"),
@@ -66,14 +81,15 @@ func DefaultKeyMap() KeyMap {
 
 // ShortHelp returns keybindings to be shown in the mini help view
 func (k KeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Tab, k.Up, k.Down, k.Left, k.Right, k.Enter, k.Notify, k.Refresh, k.Quit}
+	return []key.Binding{k.Tab, k.Up, k.Down, k.Left, k.Right, k.Enter, k.Create, k.Notify, k.Refresh, k.Quit}
 }
 
 // FullHelp returns keybindings for the expanded help view
 func (k KeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Up, k.Down, k.Left, k.Right},
-		{k.Tab, k.Enter, k.Notify, k.Refresh},
+		{k.Tab, k.Enter, k.Space, k.Back},
+		{k.Create, k.Notify, k.Refresh},
 		{k.Help, k.Quit},
 	}
 }

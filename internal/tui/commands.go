@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os/exec"
 	"runtime"
+	"sort"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -122,5 +124,190 @@ func openBrowser(url string) tea.Cmd {
 
 		_ = cmd.Start()
 		return nil
+	}
+}
+
+// loadCreatePRData fetches repositories for create PR flow.
+func loadCreatePRData(client *api.Client, project config.ProjectConfig) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		repos, err := client.GetRepositories(ctx, project.Name, project.Repositories)
+		if err != nil {
+			return CreatePRDataLoadedMsg{Err: err}
+		}
+
+		sort.SliceStable(repos, func(i, j int) bool {
+			return repos[i].Name < repos[j].Name
+		})
+
+		return CreatePRDataLoadedMsg{Repositories: repos}
+	}
+}
+
+// loadCreatePRBranches fetches source branch candidates and recent push times.
+func loadCreatePRBranches(client *api.Client, projectName, repositoryID string, activePRs []api.PullRequest, targetBranch string) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		branches, err := client.GetRepositoryBranches(ctx, projectName, repositoryID)
+		if err != nil {
+			return CreatePRBranchesLoadedMsg{RepositoryID: repositoryID, Err: err}
+		}
+
+		pushTimes, err := client.GetRecentBranchPushTimes(ctx, projectName, repositoryID, 200)
+		if err != nil {
+			pushTimes = map[string]time.Time{}
+		}
+
+		normalizedTarget := trimRefPrefix(targetBranch)
+		existing := make(map[string]bool)
+		for _, pr := range activePRs {
+			if pr.Repository.ID != repositoryID {
+				continue
+			}
+			if trimRefPrefix(pr.TargetRefName) != normalizedTarget {
+				continue
+			}
+			existing[trimRefPrefix(pr.SourceRefName)] = true
+		}
+
+		candidates := make([]string, 0, len(branches))
+		for _, branch := range branches {
+			if branch == normalizedTarget {
+				continue
+			}
+			if existing[branch] {
+				continue
+			}
+			candidates = append(candidates, branch)
+		}
+
+		sort.SliceStable(candidates, func(i, j int) bool {
+			ti, okI := pushTimes[candidates[i]]
+			tj, okJ := pushTimes[candidates[j]]
+			switch {
+			case okI && okJ:
+				if !ti.Equal(tj) {
+					return ti.After(tj)
+				}
+			case okI:
+				return true
+			case okJ:
+				return false
+			}
+
+			return candidates[i] < candidates[j]
+		})
+
+		return CreatePRBranchesLoadedMsg{
+			RepositoryID: repositoryID,
+			Branches:     candidates,
+			PushTimes:    pushTimes,
+		}
+	}
+}
+
+// createPullRequestWithOptions creates PR and optionally sets auto-complete and approval.
+func createPullRequestWithOptions(
+	client *api.Client,
+	projectName string,
+	repository api.Repository,
+	sourceBranch string,
+	targetBranch string,
+	title string,
+	description string,
+	setAutoComplete bool,
+	autoApprove bool,
+	deleteSourceBranch bool,
+	transitionWorkItems bool,
+) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+		defer cancel()
+
+		sourceRef := sourceBranch
+		if sourceRef != "" && !strings.HasPrefix(sourceRef, "refs/heads/") {
+			sourceRef = "refs/heads/" + sourceRef
+		}
+		targetRef := targetBranch
+		if targetRef != "" && !strings.HasPrefix(targetRef, "refs/heads/") {
+			targetRef = "refs/heads/" + targetRef
+		}
+
+		request := api.PullRequestCreateRequest{
+			SourceRefName: sourceRef,
+			TargetRefName: targetRef,
+			Title:         title,
+			Description:   description,
+		}
+
+		createdPR, err := client.CreatePullRequest(ctx, projectName, repository.ID, request)
+		if err != nil {
+			return PullRequestCreatedMsg{Err: err}
+		}
+
+		if setAutoComplete {
+			_, err = client.UpdatePullRequest(ctx, projectName, repository.ID, createdPR.PullRequestID, api.PullRequestUpdateRequest{
+				AutoCompleteSetBy: &api.Identity{ID: createdPR.CreatedBy.ID},
+				CompletionOptions: &api.PullRequestCompletionOptions{
+					DeleteSourceBranch:  deleteSourceBranch,
+					TransitionWorkItems: transitionWorkItems,
+					MergeStrategy:       "noFastForward",
+				},
+			})
+			if err != nil {
+				return PullRequestCreatedMsg{Err: err}
+			}
+		}
+
+		if autoApprove {
+			if createdPR.CreatedBy.ID == "" {
+				return PullRequestCreatedMsg{Err: fmt.Errorf("cannot auto-approve: missing current user id in API response")}
+			}
+			_, err = client.SetPullRequestReviewerVote(ctx, projectName, repository.ID, createdPR.PullRequestID, createdPR.CreatedBy.ID, 10)
+			if err != nil {
+				return PullRequestCreatedMsg{Err: err}
+			}
+		}
+
+		return PullRequestCreatedMsg{PullRequest: createdPR}
+	}
+}
+
+// loadCreatePRDefaults gets default title/description from latest commit message.
+func loadCreatePRDefaults(client *api.Client, projectName, repositoryID, sourceBranch string) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		message, err := client.GetLatestCommitMessage(ctx, projectName, repositoryID, sourceBranch)
+		if err != nil {
+			return CreatePRDefaultsLoadedMsg{RepositoryID: repositoryID, SourceBranch: sourceBranch, Err: err}
+		}
+
+		title := message
+		description := ""
+		if title == "" {
+			title = sourceBranch
+		}
+
+		if idx := strings.Index(title, "\n"); idx >= 0 {
+			description = strings.TrimSpace(title[idx+1:])
+			title = strings.TrimSpace(title[:idx])
+		}
+
+		if title == "" {
+			title = sourceBranch
+		}
+
+		return CreatePRDefaultsLoadedMsg{
+			RepositoryID: repositoryID,
+			SourceBranch: sourceBranch,
+			Title:        title,
+			Description:  description,
+		}
 	}
 }
