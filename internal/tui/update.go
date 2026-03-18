@@ -218,10 +218,9 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleEnter()
 
 	case key.Matches(msg, m.keys.Create):
-		if m.activeTab != TabPullRequests {
-			return m, nil
-		}
 		m.createPRSuccess = ""
+		m.activeTab = TabPullRequests
+		m.selectedRow = 0
 		m.creatingPullRequest = true
 		m.createPRStep = PRCreateStepRepository
 		m.createPRLoading = true
