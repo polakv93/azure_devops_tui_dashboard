@@ -5,29 +5,22 @@ This document serves as a guide for agents working with the Azure DevOps TUI Das
 ---
 ## Build, Lint, and Test Commands
 
-Below are the commands to build, test, lint, and work with this repository. Use the `Makefile` as a quick reference for everyday tasks.
+Below are the commands to build, test, lint, and work with this repository.
 
 ### Build Commands
 - **Build the application**:
   ```bash
-  make build  # Outputs binary to ./bin/azdo-tui
-  ```
-
-- **Build for all platforms**:
-  ```bash
-  make build-all  # Linux, Darwin, Windows
+  go build -o ./bin/azdo-tui.exe ./cmd/azdo-tui
   ```
 
 - **Run the application**:
   ```bash
-  make run
-  ./bin/azdo-tui --config configs/config.yaml
+  ./bin/azdo-tui.exe --config configs/config.yaml
   ```
 
 ### Testing Commands
 - **Run all tests**:
   ```bash
-  make test
   go test -v ./...
   ```
 
@@ -38,24 +31,26 @@ Below are the commands to build, test, lint, and work with this repository. Use 
 
 - **Run tests with a coverage report**:
   ```bash
-  make test-coverage
+  go test -v -coverprofile=coverage.out ./...
+  go tool cover -html=coverage.out -o coverage.html
   ```
 
 ### Formatting and Linting
 - **Format code**:
   ```bash
-  make fmt
+  go fmt ./...
   ```
 
 - **Lint code** (requires `golangci-lint`):
   ```bash
-  make lint
+  golangci-lint run
   ```
 
 ### Dependency Management
 - **Update dependencies**:
   ```bash
-  make deps
+  go mod tidy
+  go mod download
   ```
 
 ---
@@ -128,10 +123,9 @@ Ensure changes align with this architecture and Bubble Tea conventions.
 
 ---
 ## Tips for Agents
-- Always double-check `Makefile` for pre-defined tasks before manually running commands.
 - Adhere to the code architecture when adding features (e.g., work in `internal/api` for API interaction).
 - Use keybindings defined in `internal/tui/keys.go` for navigation testing and TUI features.
-- Regularly run `make fmt` and `make lint` to keep code clean.
+- Regularly run `go fmt ./...` and `golangci-lint run` to keep code clean.
 
 ---
 

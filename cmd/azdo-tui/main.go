@@ -4,15 +4,52 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"runtime/debug"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/polakv93/azure_devops_tui_dashboard/internal/config"
 	"github.com/polakv93/azure_devops_tui_dashboard/internal/tui"
 )
 
-var (
-	version = "dev"
-)
+var version string
+
+func currentVersion() string {
+	if version != "" {
+		return version
+	}
+
+	buildInfo, ok := debug.ReadBuildInfo()
+	if !ok {
+		return "unknown"
+	}
+
+	revision := ""
+	dirty := false
+
+	for _, setting := range buildInfo.Settings {
+		if setting.Key == "vcs.revision" && setting.Value != "" {
+			revision = setting.Value
+		}
+		if setting.Key == "vcs.modified" && strings.EqualFold(setting.Value, "true") {
+			dirty = true
+		}
+	}
+
+	if revision == "" {
+		return "unknown"
+	}
+
+	if len(revision) > 7 {
+		revision = revision[:7]
+	}
+
+	if dirty {
+		return revision + "-dirty"
+	}
+
+	return revision
+}
 
 func main() {
 	// Parse command line flags
@@ -23,7 +60,7 @@ func main() {
 
 	// Handle version flag
 	if *showVersion {
-		fmt.Printf("azdo-tui version %s\n", version)
+		fmt.Printf("azdo-tui version %s\n", currentVersion())
 		os.Exit(0)
 	}
 

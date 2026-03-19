@@ -6,22 +6,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 # Build the application
-make build                    # Output: bin/azdo-tui
+go build -o ./bin/azdo-tui.exe ./cmd/azdo-tui
 
 # Run with config
-make run                      # Uses configs/config.yaml
-./bin/azdo-tui --config configs/config.yaml
+./bin/azdo-tui.exe --config configs/config.yaml
 
 # Run tests
-make test                     # go test -v ./...
+go test -v ./...
 go test -v ./internal/config  # Run tests for a specific package
 
 # Format and lint
-make fmt                      # go fmt ./...
-make lint                     # Requires golangci-lint
+go fmt ./...
+golangci-lint run             # Requires golangci-lint
 
 # Update dependencies
-make deps                     # go mod tidy && go mod download
+go mod tidy && go mod download
 ```
 
 ## Architecture

@@ -32,20 +32,11 @@ git clone https://github.com/polakv93/azure_devops_tui_dashboard.git
 cd azure_devops_tui_dashboard
 
 # Build
-make build
+go build -o ./bin/azdo-tui.exe ./cmd/azdo-tui
 
 # Or install to GOPATH/bin
-make install
+go install ./cmd/azdo-tui
 ```
-
-### Pre-built Binaries
-
-Build for all platforms:
-```bash
-make build-all
-```
-
-This creates binaries in `bin/` for Linux, macOS (Intel + Apple Silicon), and Windows.
 
 ## Configuration
 
@@ -86,10 +77,7 @@ This creates binaries in `bin/` for Linux, macOS (Intel + Apple Silicon), and Wi
 
 ```bash
 # Run with config file
-./bin/azdo-tui --config configs/config.yaml
-
-# Or using make
-make run
+./bin/azdo-tui.exe --config configs/config.yaml
 ```
 
 ## Keyboard Shortcuts
