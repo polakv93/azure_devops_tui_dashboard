@@ -335,6 +335,7 @@ func (m Model) renderStatusBar() string {
 
 func (m Model) renderCreatePRWizard() string {
 	var b strings.Builder
+	maxRows := m.createPRListMaxRows()
 
 	b.WriteString(styles.ActiveTabStyle.Render(" Create Pull Request "))
 	b.WriteString("\n")
@@ -354,7 +355,9 @@ func (m Model) renderCreatePRWizard() string {
 
 	b.WriteString(m.renderCreatePRStepHeader(PRCreateStepRepository, "1. Repository"))
 	b.WriteString("\n")
-	for i, repo := range m.createPRRepositories {
+	repoStart, repoEnd := visibleListWindow(len(m.createPRRepositories), m.createPRSelectedRepo, maxRows)
+	for i := repoStart; i < repoEnd; i++ {
+		repo := m.createPRRepositories[i]
 		line := "  " + repo.Name
 		if i == m.createPRSelectedRepo && m.createPRStep == PRCreateStepRepository {
 			line = styles.SelectedRowStyle.Render("► " + repo.Name)
@@ -362,6 +365,7 @@ func (m Model) renderCreatePRWizard() string {
 		b.WriteString(line)
 		b.WriteString("\n")
 	}
+	b.WriteString(m.renderCreatePRListHint(len(m.createPRRepositories), repoStart, repoEnd, maxRows))
 
 	b.WriteString("\n")
 	b.WriteString(m.renderCreatePRStepHeader(PRCreateStepSourceBranch, "2. Source branch"))
@@ -370,15 +374,7 @@ func (m Model) renderCreatePRWizard() string {
 		b.WriteString(styles.HelpStyle.Render("  (no branches loaded yet)"))
 		b.WriteString("\n")
 	} else {
-		maxRows := 10
-		start := 0
-		if m.createPRSelectedSource >= maxRows {
-			start = m.createPRSelectedSource - maxRows + 1
-		}
-		end := start + maxRows
-		if end > len(m.createPRBranches) {
-			end = len(m.createPRBranches)
-		}
+		start, end := visibleListWindow(len(m.createPRBranches), m.createPRSelectedSource, maxRows)
 		for i := start; i < end; i++ {
 			branch := m.createPRBranches[i]
 			timeHint := ""
@@ -392,6 +388,7 @@ func (m Model) renderCreatePRWizard() string {
 			b.WriteString(line)
 			b.WriteString("\n")
 		}
+		b.WriteString(m.renderCreatePRListHint(len(m.createPRBranches), start, end, maxRows))
 	}
 
 	b.WriteString("\n")
@@ -402,7 +399,9 @@ func (m Model) renderCreatePRWizard() string {
 		b.WriteString(styles.HelpStyle.Render("  (no target options)"))
 		b.WriteString("\n")
 	} else {
-		for i, target := range targets {
+		start, end := visibleListWindow(len(targets), m.createPRSelectedTarget, maxRows)
+		for i := start; i < end; i++ {
+			target := targets[i]
 			line := "  " + target
 			if i == m.createPRSelectedTarget && m.createPRStep == PRCreateStepTargetBranch {
 				line = styles.SelectedRowStyle.Render("► " + target)
@@ -410,6 +409,7 @@ func (m Model) renderCreatePRWizard() string {
 			b.WriteString(line)
 			b.WriteString("\n")
 		}
+		b.WriteString(m.renderCreatePRListHint(len(targets), start, end, maxRows))
 	}
 
 	b.WriteString("\n")
@@ -477,6 +477,47 @@ func (m Model) renderCreatePRStepHeader(step PRCreateStep, title string) string 
 		return styles.SucceededStyle.Render("✓ " + title)
 	}
 	return styles.TabStyle.Render(title)
+}
+
+func (m Model) renderCreatePRListHint(total, start, end, maxRows int) string {
+	if total == 0 {
+		return ""
+	}
+	if total <= maxRows {
+		return styles.HelpStyle.Render(fmt.Sprintf("  (%d/%d)", total, total)) + "\n"
+	}
+	return styles.HelpStyle.Render(fmt.Sprintf("  (%d-%d/%d, PgUp/PgDn scroll)", start+1, end, total)) + "\n"
+}
+
+func visibleListWindow(total, selected, maxRows int) (int, int) {
+	if total <= 0 {
+		return 0, 0
+	}
+	if maxRows < 1 {
+		maxRows = 1
+	}
+	if selected < 0 {
+		selected = 0
+	}
+	if selected >= total {
+		selected = total - 1
+	}
+
+	if total <= maxRows {
+		return 0, total
+	}
+
+	start := selected - (maxRows / 2)
+	if start < 0 {
+		start = 0
+	}
+	end := start + maxRows
+	if end > total {
+		end = total
+		start = end - maxRows
+	}
+
+	return start, end
 }
 
 // truncate truncates a string to the specified length

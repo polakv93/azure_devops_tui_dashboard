@@ -570,6 +570,67 @@ func (m *Model) handleCreatePRKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case key.Matches(msg, m.keys.PageUp):
+		if m.createPRLoading {
+			return m, nil
+		}
+		page := m.createPRListMaxRows()
+		switch m.createPRStep {
+		case PRCreateStepRepository:
+			m.createPRSelectedRepo -= page
+			if m.createPRSelectedRepo < 0 {
+				m.createPRSelectedRepo = 0
+			}
+		case PRCreateStepSourceBranch:
+			m.createPRSelectedSource -= page
+			if m.createPRSelectedSource < 0 {
+				m.createPRSelectedSource = 0
+			}
+		case PRCreateStepTargetBranch:
+			m.createPRSelectedTarget -= page
+			if m.createPRSelectedTarget < 0 {
+				m.createPRSelectedTarget = 0
+			}
+		}
+		return m, nil
+
+	case key.Matches(msg, m.keys.PageDown):
+		if m.createPRLoading {
+			return m, nil
+		}
+		page := m.createPRListMaxRows()
+		switch m.createPRStep {
+		case PRCreateStepRepository:
+			if len(m.createPRRepositories) == 0 {
+				m.createPRSelectedRepo = 0
+				return m, nil
+			}
+			m.createPRSelectedRepo += page
+			if maxIdx := len(m.createPRRepositories) - 1; m.createPRSelectedRepo > maxIdx {
+				m.createPRSelectedRepo = maxIdx
+			}
+		case PRCreateStepSourceBranch:
+			if len(m.createPRBranches) == 0 {
+				m.createPRSelectedSource = 0
+				return m, nil
+			}
+			m.createPRSelectedSource += page
+			if maxIdx := len(m.createPRBranches) - 1; m.createPRSelectedSource > maxIdx {
+				m.createPRSelectedSource = maxIdx
+			}
+		case PRCreateStepTargetBranch:
+			targets := m.createPRTargetOptions()
+			if len(targets) == 0 {
+				m.createPRSelectedTarget = 0
+				return m, nil
+			}
+			m.createPRSelectedTarget += page
+			if maxIdx := len(targets) - 1; m.createPRSelectedTarget > maxIdx {
+				m.createPRSelectedTarget = maxIdx
+			}
+		}
+		return m, nil
+
 	case key.Matches(msg, m.keys.Space):
 		if m.createPRLoading {
 			return m, nil

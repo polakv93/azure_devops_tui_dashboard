@@ -108,6 +108,11 @@ type Model struct {
 	buildLogWrapLines   bool
 }
 
+const (
+	createPRMinListRows = 3
+	createPRMaxListRows = 12
+)
+
 const buildLogChunkSize = 500
 
 // PRCreateStep represents step in create pull request wizard.
@@ -172,6 +177,23 @@ func NewModel(cfg *config.Config) Model {
 		buildLogExhausted:          make(map[int]bool),
 		buildLogWrapLines:          true,
 	}
+}
+
+func (m Model) createPRListMaxRows() int {
+	available := m.height - 26
+	if available <= 0 {
+		return createPRMinListRows
+	}
+
+	rows := available / 3
+	if rows < createPRMinListRows {
+		return createPRMinListRows
+	}
+	if rows > createPRMaxListRows {
+		return createPRMaxListRows
+	}
+
+	return rows
 }
 
 // newClientFromConfig creates an API client from the configuration
