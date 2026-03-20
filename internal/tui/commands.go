@@ -255,7 +255,7 @@ func createPullRequestWithOptions(
 				CompletionOptions: &api.PullRequestCompletionOptions{
 					DeleteSourceBranch:  deleteSourceBranch,
 					TransitionWorkItems: transitionWorkItems,
-					MergeStrategy:       "noFastForward",
+					MergeStrategy:       "rebase",
 				},
 			})
 			if err != nil {
