@@ -76,14 +76,25 @@ type Build struct {
 	SourceVersion string                `json:"sourceVersion"`
 	RequestedFor  Identity              `json:"requestedFor"`
 	Project       TeamProject           `json:"project"`
+	Repository    BuildRepository       `json:"repository"`
 	Links         BuildLinks            `json:"_links"`
 	Stages        []BuildTimelineRecord `json:"-"` // Populated separately via timeline API
 }
 
+// BuildRepository represents a repository used by a build definition.
+type BuildRepository struct {
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	Type          string `json:"type"`
+	URL           string `json:"url"`
+	DefaultBranch string `json:"defaultBranch"`
+}
+
 // BuildDefinition represents a build pipeline definition
 type BuildDefinition struct {
-	ID   int    `json:"id"`
-	Name string `json:"name"`
+	ID         int             `json:"id"`
+	Name       string          `json:"name"`
+	Repository BuildRepository `json:"repository"`
 }
 
 // BuildLinks contains links related to a build
@@ -100,6 +111,12 @@ type Link struct {
 type BuildsResponse struct {
 	Count int     `json:"count"`
 	Value []Build `json:"value"`
+}
+
+// BuildQueueRequest is payload for queueing a build.
+type BuildQueueRequest struct {
+	Definition   BuildDefinition `json:"definition"`
+	SourceBranch string          `json:"sourceBranch,omitempty"`
 }
 
 // BuildLog represents a build log descriptor.

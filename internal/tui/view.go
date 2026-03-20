@@ -20,6 +20,10 @@ func (m Model) View() string {
 		return m.renderBuildLogViewer()
 	}
 
+	if m.runningPipeline {
+		return m.renderRunPipelineWizard()
+	}
+
 	var b strings.Builder
 
 	// Title
@@ -85,6 +89,11 @@ func (m Model) View() string {
 	if m.createPRSuccess != "" {
 		b.WriteString("\n")
 		b.WriteString(styles.SucceededStyle.Render("✓ " + m.createPRSuccess))
+	}
+
+	if m.runPipelineSuccess != "" {
+		b.WriteString("\n")
+		b.WriteString(styles.SucceededStyle.Render("✓ " + m.runPipelineSuccess))
 	}
 
 	if m.creatingPullRequest {
@@ -825,6 +834,69 @@ func (m Model) renderBuildLogViewer() string {
 	}
 	b.WriteString("\n")
 	b.WriteString(styles.HelpStyle.Render(fmt.Sprintf("Showing rows %d-%d of %d (source lines: %d, wrap: %s, %s)", startDisplay+1, endDisplay, displayTotal, len(lines), wrapState, state)))
+
+	return b.String()
+}
+
+func (m Model) renderRunPipelineWizard() string {
+	var b strings.Builder
+	maxRows := m.createPRListMaxRows()
+
+	b.WriteString(styles.ActiveTabStyle.Render(" Run Pipeline "))
+	b.WriteString("\n")
+	b.WriteString(styles.HelpStyle.Render("Esc cancel | Enter queue selected branch | Up/Down select branch"))
+	b.WriteString("\n\n")
+
+	b.WriteString(styles.TableHeaderStyle.Render("Pipeline"))
+	b.WriteString("\n")
+	b.WriteString("  " + m.runPipelineDefinition)
+	b.WriteString("\n")
+	if m.runPipelineRepository != "" {
+		b.WriteString(styles.HelpStyle.Render("Repository: " + m.runPipelineRepository))
+		b.WriteString("\n")
+	}
+	b.WriteString("\n")
+
+	if m.runPipelineLoading {
+		b.WriteString(m.spinner.View())
+		b.WriteString(" Loading branches...")
+		b.WriteString("\n")
+	}
+
+	if m.runPipelineError != "" {
+		b.WriteString(styles.ErrorStyle.Render("Error: " + m.runPipelineError))
+		b.WriteString("\n")
+	}
+
+	b.WriteString("\n")
+	b.WriteString(styles.TableHeaderStyle.Render("Branches"))
+	b.WriteString("\n")
+
+	if len(m.runPipelineBranches) == 0 {
+		b.WriteString(styles.HelpStyle.Render("  (no branches loaded yet)"))
+		b.WriteString("\n")
+	} else {
+		start, end := visibleListWindow(len(m.runPipelineBranches), m.runPipelineSelected, maxRows)
+		for i := start; i < end; i++ {
+			branch := m.runPipelineBranches[i]
+			timeHint := ""
+			if pushedAt, ok := m.runPipelineBranchPush[branch]; ok {
+				timeHint = "  " + styles.HelpStyle.Render("("+pushedAt.Local().Format("2006-01-02 15:04")+")")
+			}
+			line := "  " + branch + timeHint
+			if i == m.runPipelineSelected {
+				line = styles.SelectedRowStyle.Render("► " + branch + timeHint)
+			}
+			b.WriteString(line)
+			b.WriteString("\n")
+		}
+		b.WriteString(m.renderCreatePRListHint(len(m.runPipelineBranches), start, end, maxRows))
+	}
+
+	b.WriteString("\n")
+	b.WriteString(styles.HelpStyle.Render("Tip: branches are sorted by recent push activity"))
+	b.WriteString("\n\n")
+	b.WriteString(styles.HelpStyle.Render(m.help.View(m.keys)))
 
 	return b.String()
 }

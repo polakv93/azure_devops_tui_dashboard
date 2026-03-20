@@ -389,6 +389,49 @@ func (c *Client) GetBuildTimeline(ctx context.Context, project string, buildID i
 	return stages, nil
 }
 
+// GetBuildDefinition fetches build definition details by ID.
+func (c *Client) GetBuildDefinition(ctx context.Context, project string, definitionID int) (BuildDefinition, error) {
+	url := fmt.Sprintf("%s/%s/%s/_apis/build/definitions/%d?api-version=7.1",
+		c.baseURL, c.organization, project, definitionID)
+
+	body, err := c.doRequest(ctx, url)
+	if err != nil {
+		return BuildDefinition{}, err
+	}
+
+	var definition BuildDefinition
+	if err := json.Unmarshal(body, &definition); err != nil {
+		return BuildDefinition{}, fmt.Errorf("failed to parse build definition response: %w", err)
+	}
+
+	return definition, nil
+}
+
+// QueueBuild queues a build for the specified definition and branch.
+func (c *Client) QueueBuild(ctx context.Context, project string, definitionID int, sourceBranch string) (Build, error) {
+	requestURL := fmt.Sprintf("%s/%s/%s/_apis/build/builds?api-version=7.1",
+		c.baseURL, c.organization, project)
+
+	request := BuildQueueRequest{
+		Definition: BuildDefinition{ID: definitionID},
+	}
+	if sourceBranch != "" {
+		request.SourceBranch = sourceBranch
+	}
+
+	body, err := c.doRequestWithBody(ctx, http.MethodPost, requestURL, request)
+	if err != nil {
+		return Build{}, err
+	}
+
+	var build Build
+	if err := json.Unmarshal(body, &build); err != nil {
+		return Build{}, fmt.Errorf("failed to parse queue build response: %w", err)
+	}
+
+	return build, nil
+}
+
 // GetBuildLogs fetches available logs for a build.
 func (c *Client) GetBuildLogs(ctx context.Context, project string, buildID int) ([]BuildLog, error) {
 	url := fmt.Sprintf("%s/%s/%s/_apis/build/builds/%d/logs?api-version=7.1",

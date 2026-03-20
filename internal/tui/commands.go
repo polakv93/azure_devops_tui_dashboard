@@ -359,3 +359,94 @@ func loadBuildLogChunk(client *api.Client, project string, buildID, logID, start
 		}
 	}
 }
+
+// loadRunPipelineData fetches repository and branch options for selected build definition.
+func loadRunPipelineData(client *api.Client, projectName string, definitionID int, definitionName string) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		definition, err := client.GetBuildDefinition(ctx, projectName, definitionID)
+		if err != nil {
+			return RunPipelineDataLoadedMsg{DefinitionID: definitionID, DefinitionName: definitionName, Err: err}
+		}
+
+		repoID := definition.Repository.ID
+		repoName := definition.Repository.Name
+		if repoID == "" {
+			return RunPipelineDataLoadedMsg{
+				DefinitionID:   definitionID,
+				DefinitionName: definitionName,
+				Err:            fmt.Errorf("selected pipeline has no Git repository configured"),
+			}
+		}
+
+		branches, err := client.GetRepositoryBranches(ctx, projectName, repoID)
+		if err != nil {
+			return RunPipelineDataLoadedMsg{DefinitionID: definitionID, DefinitionName: definitionName, RepositoryID: repoID, RepositoryName: repoName, Err: err}
+		}
+
+		pushTimes, err := client.GetRecentBranchPushTimes(ctx, projectName, repoID, 200)
+		if err != nil {
+			pushTimes = map[string]time.Time{}
+		}
+
+		sort.SliceStable(branches, func(i, j int) bool {
+			ti, okI := pushTimes[branches[i]]
+			tj, okJ := pushTimes[branches[j]]
+			switch {
+			case okI && okJ:
+				if !ti.Equal(tj) {
+					return ti.After(tj)
+				}
+			case okI:
+				return true
+			case okJ:
+				return false
+			}
+
+			return branches[i] < branches[j]
+		})
+
+		return RunPipelineDataLoadedMsg{
+			DefinitionID:   definitionID,
+			DefinitionName: definitionName,
+			RepositoryID:   repoID,
+			RepositoryName: repoName,
+			Branches:       branches,
+			PushTimes:      pushTimes,
+		}
+	}
+}
+
+// queuePipelineRun queues selected pipeline for a selected branch.
+func queuePipelineRun(client *api.Client, projectName string, definitionID int, definitionName, branch string) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+		defer cancel()
+
+		sourceRef := branch
+		if sourceRef != "" && !strings.HasPrefix(sourceRef, "refs/heads/") {
+			sourceRef = "refs/heads/" + sourceRef
+		}
+
+		build, err := client.QueueBuild(ctx, projectName, definitionID, sourceRef)
+		if err != nil {
+			return PipelineQueuedMsg{
+				Project:        projectName,
+				DefinitionID:   definitionID,
+				DefinitionName: definitionName,
+				Branch:         branch,
+				Err:            err,
+			}
+		}
+
+		return PipelineQueuedMsg{
+			Project:        projectName,
+			DefinitionID:   definitionID,
+			DefinitionName: definitionName,
+			Branch:         branch,
+			BuildID:        build.ID,
+		}
+	}
+}

@@ -21,6 +21,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.showBuildLogViewer {
 			return m.handleBuildLogViewerKeyMsg(msg)
 		}
+		if m.runningPipeline {
+			return m.handleRunPipelineKeyMsg(msg)
+		}
 		if m.creatingPullRequest {
 			return m.handleCreatePRKeyMsg(msg)
 		}
@@ -134,6 +137,50 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.createPRDescription = msg.Description
 		}
 		return m, nil
+
+	case RunPipelineDataLoadedMsg:
+		m.runPipelineLoading = false
+		if !m.runningPipeline {
+			return m, nil
+		}
+		if msg.DefinitionID != m.runPipelineDefinitionID {
+			return m, nil
+		}
+		if msg.Err != nil {
+			m.runPipelineError = msg.Err.Error()
+			return m, nil
+		}
+
+		m.runPipelineError = ""
+		m.runPipelineBranches = msg.Branches
+		m.runPipelineBranchPush = msg.PushTimes
+		m.runPipelineSelected = 0
+		m.runPipelineRepositoryID = msg.RepositoryID
+		m.runPipelineRepository = msg.RepositoryName
+		if len(msg.Branches) == 0 {
+			m.runPipelineError = "no branches available for selected pipeline"
+		}
+		return m, nil
+
+	case PipelineQueuedMsg:
+		m.runPipelineLoading = false
+		if msg.Err != nil {
+			m.runPipelineError = msg.Err.Error()
+			return m, nil
+		}
+
+		m.runPipelineSuccess = fmt.Sprintf("queued pipeline '%s' on '%s' (build #%d)", msg.DefinitionName, msg.Branch, msg.BuildID)
+		m.resetRunPipelineFlow()
+		for _, p := range m.config.Projects {
+			m.loadingBuilds[p.Name] = true
+			m.loadingReleases[p.Name] = true
+			m.loadingPullRequests[p.Name] = true
+		}
+		m.lastRefresh = time.Now()
+		return m, tea.Batch(
+			fetchAllData(m.client, m.config.Projects, m.config.Display.MaxItemsPerProject),
+			refreshTicker(m.config.Display.RefreshInterval),
+		)
 
 	case PullRequestCreatedMsg:
 		m.createPRLoading = false
@@ -281,14 +328,17 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case key.Matches(msg, m.keys.Enter):
 		m.createPRSuccess = ""
+		m.runPipelineSuccess = ""
 		return m.handleEnter()
 
 	case key.Matches(msg, m.keys.Logs):
 		m.createPRSuccess = ""
+		m.runPipelineSuccess = ""
 		return m.handleOpenBuildLogs()
 
 	case key.Matches(msg, m.keys.Create):
 		m.createPRSuccess = ""
+		m.runPipelineSuccess = ""
 		m.activeTab = TabPullRequests
 		m.selectedRow = 0
 		m.creatingPullRequest = true
@@ -303,6 +353,29 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.createPRTargetBranch = ""
 		return m, loadCreatePRData(m.client, m.CurrentProject())
 
+	case key.Matches(msg, m.keys.Run):
+		if m.activeTab != TabBuilds {
+			return m, nil
+		}
+		builds := m.CurrentBuilds()
+		if m.selectedRow < 0 || m.selectedRow >= len(builds) {
+			return m, nil
+		}
+		selected := builds[m.selectedRow]
+		m.createPRSuccess = ""
+		m.runPipelineSuccess = ""
+		m.runningPipeline = true
+		m.runPipelineLoading = true
+		m.runPipelineError = ""
+		m.runPipelineDefinitionID = selected.Definition.ID
+		m.runPipelineDefinition = selected.Definition.Name
+		m.runPipelineBranches = nil
+		m.runPipelineSelected = 0
+		m.runPipelineBranchPush = make(map[string]time.Time)
+		m.runPipelineRepositoryID = ""
+		m.runPipelineRepository = ""
+		return m, loadRunPipelineData(m.client, m.CurrentProject().Name, selected.Definition.ID, selected.Definition.Name)
+
 	case key.Matches(msg, m.keys.Notify):
 		switch m.activeTab {
 		case TabBuilds:
@@ -314,6 +387,89 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case key.Matches(msg, m.keys.Refresh):
 		m.createPRSuccess = ""
+		m.runPipelineSuccess = ""
+		return m.handleRefresh()
+	}
+
+	return m, nil
+}
+
+func (m *Model) handleRunPipelineKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch {
+	case key.Matches(msg, m.keys.Quit):
+		return m, tea.Quit
+
+	case key.Matches(msg, m.keys.Back):
+		if m.runPipelineLoading {
+			return m, nil
+		}
+		m.resetRunPipelineFlow()
+		return m, nil
+
+	case key.Matches(msg, m.keys.Up):
+		if m.runPipelineLoading {
+			return m, nil
+		}
+		if m.runPipelineSelected > 0 {
+			m.runPipelineSelected--
+		}
+		return m, nil
+
+	case key.Matches(msg, m.keys.Down):
+		if m.runPipelineLoading {
+			return m, nil
+		}
+		if m.runPipelineSelected < len(m.runPipelineBranches)-1 {
+			m.runPipelineSelected++
+		}
+		return m, nil
+
+	case key.Matches(msg, m.keys.PageUp):
+		if m.runPipelineLoading {
+			return m, nil
+		}
+		m.runPipelineSelected -= m.createPRListMaxRows()
+		if m.runPipelineSelected < 0 {
+			m.runPipelineSelected = 0
+		}
+		return m, nil
+
+	case key.Matches(msg, m.keys.PageDown):
+		if m.runPipelineLoading {
+			return m, nil
+		}
+		if len(m.runPipelineBranches) == 0 {
+			m.runPipelineSelected = 0
+			return m, nil
+		}
+		m.runPipelineSelected += m.createPRListMaxRows()
+		if maxIdx := len(m.runPipelineBranches) - 1; m.runPipelineSelected > maxIdx {
+			m.runPipelineSelected = maxIdx
+		}
+		return m, nil
+
+	case key.Matches(msg, m.keys.Enter):
+		if m.runPipelineLoading {
+			return m, nil
+		}
+		if len(m.runPipelineBranches) == 0 {
+			m.runPipelineError = "no branch selected"
+			return m, nil
+		}
+		if m.runPipelineSelected < 0 || m.runPipelineSelected >= len(m.runPipelineBranches) {
+			m.runPipelineSelected = 0
+		}
+		branch := m.runPipelineBranches[m.runPipelineSelected]
+		m.runPipelineLoading = true
+		m.runPipelineError = ""
+		return m, queuePipelineRun(m.client, m.CurrentProject().Name, m.runPipelineDefinitionID, m.runPipelineDefinition, branch)
+
+	case key.Matches(msg, m.keys.Help):
+		m.showHelp = !m.showHelp
+		m.help.ShowAll = m.showHelp
+		return m, nil
+
+	case key.Matches(msg, m.keys.Refresh):
 		return m.handleRefresh()
 	}
 

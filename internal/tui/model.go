@@ -106,6 +106,19 @@ type Model struct {
 	buildLogExhausted   map[int]bool
 	buildLogViewportTop int
 	buildLogWrapLines   bool
+
+	// Run pipeline flow
+	runningPipeline         bool
+	runPipelineLoading      bool
+	runPipelineError        string
+	runPipelineSuccess      string
+	runPipelineBranches     []string
+	runPipelineBranchPush   map[string]time.Time
+	runPipelineSelected     int
+	runPipelineDefinitionID int
+	runPipelineDefinition   string
+	runPipelineRepositoryID string
+	runPipelineRepository   string
 }
 
 const (
@@ -176,6 +189,7 @@ func NewModel(cfg *config.Config) Model {
 		buildLogLoadedUntil:        make(map[int]int),
 		buildLogExhausted:          make(map[int]bool),
 		buildLogWrapLines:          true,
+		runPipelineBranchPush:      make(map[string]time.Time),
 	}
 }
 
@@ -454,6 +468,19 @@ func (m *Model) resetBuildLogViewer() {
 	m.buildLogLoadedUntil = make(map[int]int)
 	m.buildLogExhausted = make(map[int]bool)
 	m.buildLogViewportTop = 0
+}
+
+func (m *Model) resetRunPipelineFlow() {
+	m.runningPipeline = false
+	m.runPipelineLoading = false
+	m.runPipelineError = ""
+	m.runPipelineBranches = nil
+	m.runPipelineBranchPush = make(map[string]time.Time)
+	m.runPipelineSelected = 0
+	m.runPipelineDefinitionID = 0
+	m.runPipelineDefinition = ""
+	m.runPipelineRepositoryID = ""
+	m.runPipelineRepository = ""
 }
 
 func (m Model) buildLogContentWidth() int {

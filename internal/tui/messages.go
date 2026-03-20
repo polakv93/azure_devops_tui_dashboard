@@ -94,3 +94,24 @@ type BuildLogChunkLoadedMsg struct {
 	Lines     []string
 	Err       error
 }
+
+// RunPipelineDataLoadedMsg is sent when branch options for running pipeline are loaded.
+type RunPipelineDataLoadedMsg struct {
+	DefinitionID   int
+	DefinitionName string
+	RepositoryID   string
+	RepositoryName string
+	Branches       []string
+	PushTimes      map[string]time.Time
+	Err            error
+}
+
+// PipelineQueuedMsg is sent when a pipeline was queued.
+type PipelineQueuedMsg struct {
+	Project        string
+	DefinitionID   int
+	DefinitionName string
+	Branch         string
+	BuildID        int
+	Err            error
+}
