@@ -275,12 +275,19 @@ type PullRequestCompletionOptions struct {
 
 // PullRequestCreateRequest is payload for creating a pull request.
 type PullRequestCreateRequest struct {
-	SourceRefName string     `json:"sourceRefName"`
-	TargetRefName string     `json:"targetRefName"`
-	Title         string     `json:"title"`
-	Description   string     `json:"description,omitempty"`
-	Reviewers     []Reviewer `json:"reviewers,omitempty"`
-	IsDraft       bool       `json:"isDraft,omitempty"`
+	SourceRefName string        `json:"sourceRefName"`
+	TargetRefName string        `json:"targetRefName"`
+	Title         string        `json:"title"`
+	Description   string        `json:"description,omitempty"`
+	WorkItemRefs  []ResourceRef `json:"workItemRefs,omitempty"`
+	Reviewers     []Reviewer    `json:"reviewers,omitempty"`
+	IsDraft       bool          `json:"isDraft,omitempty"`
+}
+
+// ResourceRef represents a lightweight Azure DevOps resource reference.
+type ResourceRef struct {
+	ID  string `json:"id,omitempty"`
+	URL string `json:"url,omitempty"`
 }
 
 // PullRequestUpdateRequest is payload for updating a pull request.

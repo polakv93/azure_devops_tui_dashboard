@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"regexp"
 	"runtime"
 	"sort"
 	"strings"
@@ -244,6 +245,17 @@ func createPullRequestWithOptions(
 			Description:   description,
 		}
 
+		latestCommitMessage, err := client.GetLatestCommitMessage(ctx, projectName, repository.ID, sourceBranch)
+		if err == nil {
+			workItemIDs := extractWorkItemIDsFromCommitMessage(latestCommitMessage)
+			if len(workItemIDs) > 0 {
+				request.WorkItemRefs = make([]api.ResourceRef, 0, len(workItemIDs))
+				for _, id := range workItemIDs {
+					request.WorkItemRefs = append(request.WorkItemRefs, api.ResourceRef{ID: id})
+				}
+			}
+		}
+
 		createdPR, err := client.CreatePullRequest(ctx, projectName, repository.ID, request)
 		if err != nil {
 			return PullRequestCreatedMsg{Err: err}
@@ -275,6 +287,37 @@ func createPullRequestWithOptions(
 
 		return PullRequestCreatedMsg{PullRequest: createdPR}
 	}
+}
+
+var workItemIDPattern = regexp.MustCompile(`#(\d+)(?:[^\w]|$)`)
+
+func extractWorkItemIDsFromCommitMessage(message string) []string {
+	matches := workItemIDPattern.FindAllStringSubmatch(message, -1)
+	if len(matches) == 0 {
+		return nil
+	}
+
+	seen := make(map[string]bool)
+	ids := make([]string, 0, len(matches))
+	for _, match := range matches {
+		if len(match) < 2 {
+			continue
+		}
+
+		id := match[1]
+		if seen[id] {
+			continue
+		}
+
+		seen[id] = true
+		ids = append(ids, id)
+	}
+
+	if len(ids) == 0 {
+		return nil
+	}
+
+	return ids
 }
 
 // loadCreatePRDefaults gets default title/description from latest commit message.
