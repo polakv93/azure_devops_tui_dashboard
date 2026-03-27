@@ -97,7 +97,7 @@ go install ./cmd/azdo-tui
 | `c` | Start pull request creation wizard (in Pull Requests tab) |
 | `Space` | Toggle option in PR creation wizard |
 | `Esc` | Back/cancel in PR creation wizard |
-| `n` | Toggle notifications for selected pipeline/release (session only) |
+| `n` | Toggle notifications for selected pipeline/release/pull request (session only) |
 | `r` | Refresh data |
 | `?` | Toggle help |
 | `q` | Quit |

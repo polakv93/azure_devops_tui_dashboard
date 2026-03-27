@@ -63,6 +63,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.errors[msg.Project+"-pullrequests"] = msg.Err
 		} else {
 			delete(m.errors, msg.Project+"-pullrequests")
+			cmds = append(cmds, m.pullRequestNotificationCmds(msg.Project, msg.PullRequests)...)
 			m.pullRequests[msg.Project] = msg.PullRequests
 			if m.creatingPullRequest && m.createPRStep == PRCreateStepSourceBranch {
 				cmds = append(cmds, m.loadBranchesForCreatePR())
@@ -382,6 +383,8 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.toggleBuildDefinitionWatch()
 		case TabReleases:
 			m.toggleReleaseDefinitionWatch()
+		case TabPullRequests:
+			m.togglePullRequestWatch()
 		}
 		return m, nil
 
@@ -1122,6 +1125,79 @@ func (m *Model) releaseCompletionNotificationCmds(project string, releases []api
 
 	m.knownReleaseCompletion[project] = newKnown
 	m.releaseSnapshotInitialized[project] = true
+
+	return cmds
+}
+
+// pullRequestNotificationCmds returns notification commands for watched pull requests.
+func (m *Model) pullRequestNotificationCmds(project string, pullRequests []api.PullRequest) []tea.Cmd {
+	known := m.knownPullRequests[project]
+	if known == nil {
+		known = make(map[int]api.PullRequest)
+	}
+
+	watched := m.watchedPullRequests[project]
+	initialized := m.pullRequestSnapshotInitialized[project]
+
+	var cmds []tea.Cmd
+	newKnown := make(map[int]api.PullRequest, len(pullRequests))
+	presentIDs := make(map[int]bool, len(pullRequests))
+
+	for _, pr := range pullRequests {
+		newKnown[pr.PullRequestID] = pr
+		presentIDs[pr.PullRequestID] = true
+
+		if !watched[pr.PullRequestID] {
+			continue
+		}
+
+		if !initialized {
+			continue
+		}
+
+		prev, ok := known[pr.PullRequestID]
+		if !ok {
+			continue
+		}
+
+		if pr.HasConflicts() && !prev.HasConflicts() {
+			title := fmt.Sprintf("PR has conflicts: #%d", pr.PullRequestID)
+			body := fmt.Sprintf("Project: %s | %s", project, pr.Title)
+			cmds = append(cmds, notifyDesktop(title, body))
+		}
+
+		if pr.HasRejections() && !prev.HasRejections() {
+			title := fmt.Sprintf("PR rejected: #%d", pr.PullRequestID)
+			body := fmt.Sprintf("Project: %s | %s", project, pr.Title)
+			cmds = append(cmds, notifyDesktop(title, body))
+		}
+
+		if pr.IsApproved() && !prev.IsApproved() {
+			title := fmt.Sprintf("PR fully approved: #%d", pr.PullRequestID)
+			body := fmt.Sprintf("Project: %s | %s", project, pr.Title)
+			cmds = append(cmds, notifyDesktop(title, body))
+		}
+	}
+
+	if initialized {
+		for pullRequestID := range watched {
+			if presentIDs[pullRequestID] {
+				continue
+			}
+
+			prev, ok := known[pullRequestID]
+			if !ok || !prev.IsActive() {
+				continue
+			}
+
+			title := fmt.Sprintf("PR closed: #%d", pullRequestID)
+			body := fmt.Sprintf("Project: %s | %s | no longer active", project, prev.Title)
+			cmds = append(cmds, notifyDesktop(title, body))
+		}
+	}
+
+	m.knownPullRequests[project] = newKnown
+	m.pullRequestSnapshotInitialized[project] = true
 
 	return cmds
 }

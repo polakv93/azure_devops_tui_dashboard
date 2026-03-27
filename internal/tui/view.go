@@ -271,7 +271,11 @@ func (m Model) renderPullRequestsTable() string {
 
 	// Rows
 	for i, pr := range pullRequests {
-		title := truncate(pr.Title, titleWidth-2)
+		titleText := pr.Title
+		if m.isPullRequestWatched(m.CurrentProject().Name, pr.PullRequestID) {
+			titleText = "[N] " + titleText
+		}
+		title := truncate(titleText, titleWidth-2)
 		repo := truncate(pr.Repository.Name, repoWidth-2)
 		branches := truncate(pr.GetBranchSummary(), branchesWidth-2)
 		author := truncate(pr.CreatedBy.DisplayName, authorWidth-2)

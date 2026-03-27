@@ -52,15 +52,18 @@ type Model struct {
 	lastRefresh       time.Time
 	notificationError error
 
-	// Session-only notification watches (project -> definition ID -> watched)
+	// Session-only notification watches (project -> entity ID -> watched)
 	watchedBuildDefinitions   map[string]map[int]bool
 	watchedReleaseDefinitions map[string]map[int]bool
+	watchedPullRequests       map[string]map[int]bool
 
 	// Previous completion snapshots for transition detection
-	knownBuildCompletion       map[string]map[int]bool // project -> build ID -> completed
-	knownReleaseCompletion     map[string]map[int]bool // project -> release ID -> completed
-	buildSnapshotInitialized   map[string]bool         // project -> snapshot initialized
-	releaseSnapshotInitialized map[string]bool         // project -> snapshot initialized
+	knownBuildCompletion           map[string]map[int]bool // project -> build ID -> completed
+	knownReleaseCompletion         map[string]map[int]bool // project -> release ID -> completed
+	knownPullRequests              map[string]map[int]api.PullRequest
+	buildSnapshotInitialized       map[string]bool // project -> snapshot initialized
+	releaseSnapshotInitialized     map[string]bool // project -> snapshot initialized
+	pullRequestSnapshotInitialized map[string]bool // project -> snapshot initialized
 
 	// Components
 	spinner spinner.Model
@@ -157,39 +160,42 @@ func NewModel(cfg *config.Config) Model {
 	h.ShowAll = false
 
 	return Model{
-		config:                     cfg,
-		client:                     newClientFromConfig(cfg),
-		activeTab:                  TabBuilds,
-		activeProject:              0,
-		selectedRow:                0,
-		builds:                     make(map[string][]api.Build),
-		releases:                   make(map[string][]api.Release),
-		pullRequests:               make(map[string][]api.PullRequest),
-		loadingBuilds:              make(map[string]bool),
-		loadingReleases:            make(map[string]bool),
-		loadingPullRequests:        make(map[string]bool),
-		errors:                     make(map[string]error),
-		watchedBuildDefinitions:    make(map[string]map[int]bool),
-		watchedReleaseDefinitions:  make(map[string]map[int]bool),
-		knownBuildCompletion:       make(map[string]map[int]bool),
-		knownReleaseCompletion:     make(map[string]map[int]bool),
-		buildSnapshotInitialized:   make(map[string]bool),
-		releaseSnapshotInitialized: make(map[string]bool),
-		spinner:                    s,
-		help:                       h,
-		keys:                       DefaultKeyMap(),
-		createPRBranchPushTimes:    make(map[string]time.Time),
-		createPRSetAutoComplete:    true,
-		createPRAutoApprove:        true,
-		createPRDeleteSourceBranch: true,
-		createPRTransitionWorkItem: true,
-		createPRTitleAuto:          true,
-		createPRDescriptionAuto:    true,
-		buildLogLines:              make(map[int][]string),
-		buildLogLoadedUntil:        make(map[int]int),
-		buildLogExhausted:          make(map[int]bool),
-		buildLogWrapLines:          true,
-		runPipelineBranchPush:      make(map[string]time.Time),
+		config:                         cfg,
+		client:                         newClientFromConfig(cfg),
+		activeTab:                      TabBuilds,
+		activeProject:                  0,
+		selectedRow:                    0,
+		builds:                         make(map[string][]api.Build),
+		releases:                       make(map[string][]api.Release),
+		pullRequests:                   make(map[string][]api.PullRequest),
+		loadingBuilds:                  make(map[string]bool),
+		loadingReleases:                make(map[string]bool),
+		loadingPullRequests:            make(map[string]bool),
+		errors:                         make(map[string]error),
+		watchedBuildDefinitions:        make(map[string]map[int]bool),
+		watchedReleaseDefinitions:      make(map[string]map[int]bool),
+		watchedPullRequests:            make(map[string]map[int]bool),
+		knownBuildCompletion:           make(map[string]map[int]bool),
+		knownReleaseCompletion:         make(map[string]map[int]bool),
+		knownPullRequests:              make(map[string]map[int]api.PullRequest),
+		buildSnapshotInitialized:       make(map[string]bool),
+		releaseSnapshotInitialized:     make(map[string]bool),
+		pullRequestSnapshotInitialized: make(map[string]bool),
+		spinner:                        s,
+		help:                           h,
+		keys:                           DefaultKeyMap(),
+		createPRBranchPushTimes:        make(map[string]time.Time),
+		createPRSetAutoComplete:        true,
+		createPRAutoApprove:            true,
+		createPRDeleteSourceBranch:     true,
+		createPRTransitionWorkItem:     true,
+		createPRTitleAuto:              true,
+		createPRDescriptionAuto:        true,
+		buildLogLines:                  make(map[int][]string),
+		buildLogLoadedUntil:            make(map[int]int),
+		buildLogExhausted:              make(map[int]bool),
+		buildLogWrapLines:              true,
+		runPipelineBranchPush:          make(map[string]time.Time),
 	}
 }
 
@@ -230,8 +236,10 @@ func (m Model) Init() tea.Cmd {
 		m.loadingPullRequests[p.Name] = true
 		m.watchedBuildDefinitions[p.Name] = make(map[int]bool)
 		m.watchedReleaseDefinitions[p.Name] = make(map[int]bool)
+		m.watchedPullRequests[p.Name] = make(map[int]bool)
 		m.knownBuildCompletion[p.Name] = make(map[int]bool)
 		m.knownReleaseCompletion[p.Name] = make(map[int]bool)
+		m.knownPullRequests[p.Name] = make(map[int]api.PullRequest)
 	}
 
 	return tea.Batch(
@@ -424,6 +432,32 @@ func (m Model) isBuildDefinitionWatched(project string, definitionID int) bool {
 // isReleaseDefinitionWatched returns true if release definition is watched in project.
 func (m Model) isReleaseDefinitionWatched(project string, definitionID int) bool {
 	return m.watchedReleaseDefinitions[project][definitionID]
+}
+
+// togglePullRequestWatch toggles pull request watch for current selection.
+func (m *Model) togglePullRequestWatch() {
+	pullRequests := m.CurrentPullRequests()
+	if m.selectedRow < 0 || m.selectedRow >= len(pullRequests) {
+		return
+	}
+
+	project := m.CurrentProject().Name
+	pullRequestID := pullRequests[m.selectedRow].PullRequestID
+
+	if m.watchedPullRequests[project] == nil {
+		m.watchedPullRequests[project] = make(map[int]bool)
+	}
+
+	if m.watchedPullRequests[project][pullRequestID] {
+		delete(m.watchedPullRequests[project], pullRequestID)
+		return
+	}
+	m.watchedPullRequests[project][pullRequestID] = true
+}
+
+// isPullRequestWatched returns true if pull request is watched in project.
+func (m Model) isPullRequestWatched(project string, pullRequestID int) bool {
+	return m.watchedPullRequests[project][pullRequestID]
 }
 
 func (m *Model) resetCreatePRFlow() {
