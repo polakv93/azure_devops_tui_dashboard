@@ -3,6 +3,9 @@ package tui
 import (
 	"reflect"
 	"testing"
+	"time"
+
+	"github.com/polakv93/azure_devops_tui_dashboard/internal/api"
 )
 
 func TestExtractWorkItemIDsFromCommitMessage(t *testing.T) {
@@ -50,5 +53,27 @@ func TestExtractWorkItemIDsFromCommitMessage(t *testing.T) {
 				t.Fatalf("extractWorkItemIDsFromCommitMessage() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestCreatePRSourceCandidatesFiltersAndSorts(t *testing.T) {
+	branches := []string{"feature/a", "feature/b", "main", "feature/c", "feature/a"}
+	pushTimes := map[string]time.Time{
+		"feature/b": time.Date(2026, 3, 27, 10, 0, 0, 0, time.UTC),
+		"feature/a": time.Date(2026, 3, 26, 10, 0, 0, 0, time.UTC),
+	}
+	activePRs := []api.PullRequest{
+		{
+			Repository:    api.PullRequestRepository{ID: "repo-1"},
+			SourceRefName: "refs/heads/feature/b",
+			TargetRefName: "refs/heads/main",
+		},
+	}
+
+	got := createPRSourceCandidates(branches, pushTimes, activePRs, "repo-1", "main")
+	want := []string{"feature/a", "feature/c"}
+
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("createPRSourceCandidates() = %v, want %v", got, want)
 	}
 }

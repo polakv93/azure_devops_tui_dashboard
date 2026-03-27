@@ -58,6 +58,7 @@ type CreatePRBranchesLoadedMsg struct {
 	RepositoryID string
 	Branches     []string
 	PushTimes    map[string]time.Time
+	HasMore      bool
 	Err          error
 }
 

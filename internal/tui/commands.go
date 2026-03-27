@@ -147,8 +147,37 @@ func loadCreatePRData(client *api.Client, project config.ProjectConfig) tea.Cmd 
 	}
 }
 
-// loadCreatePRBranches fetches source branch candidates and recent push times.
-func loadCreatePRBranches(client *api.Client, projectName, repositoryID string, activePRs []api.PullRequest, targetBranch string) tea.Cmd {
+// loadCreatePRBranchesRecent fetches recent branch candidates (fast mode) and push times.
+func loadCreatePRBranchesRecent(client *api.Client, projectName, repositoryID string, activePRs []api.PullRequest, targetBranch string) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		pushTimes, err := client.GetRecentBranchPushTimes(ctx, projectName, repositoryID, 400)
+		if err != nil {
+			pushTimes = map[string]time.Time{}
+		}
+
+		recentBranches := make([]string, 0, len(pushTimes))
+		for branch := range pushTimes {
+			recentBranches = append(recentBranches, branch)
+		}
+		candidates := createPRSourceCandidates(recentBranches, pushTimes, activePRs, repositoryID, targetBranch)
+		if len(candidates) > createPRRecentBranchLimit {
+			candidates = candidates[:createPRRecentBranchLimit]
+		}
+
+		return CreatePRBranchesLoadedMsg{
+			RepositoryID: repositoryID,
+			Branches:     candidates,
+			PushTimes:    pushTimes,
+			HasMore:      true,
+		}
+	}
+}
+
+// loadCreatePRBranchesAll fetches all branch candidates and recent push times.
+func loadCreatePRBranchesAll(client *api.Client, projectName, repositoryID string, activePRs []api.PullRequest, targetBranch string) tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
@@ -158,57 +187,72 @@ func loadCreatePRBranches(client *api.Client, projectName, repositoryID string, 
 			return CreatePRBranchesLoadedMsg{RepositoryID: repositoryID, Err: err}
 		}
 
-		pushTimes, err := client.GetRecentBranchPushTimes(ctx, projectName, repositoryID, 200)
+		pushTimes, err := client.GetRecentBranchPushTimes(ctx, projectName, repositoryID, 400)
 		if err != nil {
 			pushTimes = map[string]time.Time{}
 		}
 
-		normalizedTarget := trimRefPrefix(targetBranch)
-		existing := make(map[string]bool)
-		for _, pr := range activePRs {
-			if pr.Repository.ID != repositoryID {
-				continue
-			}
-			if trimRefPrefix(pr.TargetRefName) != normalizedTarget {
-				continue
-			}
-			existing[trimRefPrefix(pr.SourceRefName)] = true
-		}
-
-		candidates := make([]string, 0, len(branches))
-		for _, branch := range branches {
-			if branch == normalizedTarget {
-				continue
-			}
-			if existing[branch] {
-				continue
-			}
-			candidates = append(candidates, branch)
-		}
-
-		sort.SliceStable(candidates, func(i, j int) bool {
-			ti, okI := pushTimes[candidates[i]]
-			tj, okJ := pushTimes[candidates[j]]
-			switch {
-			case okI && okJ:
-				if !ti.Equal(tj) {
-					return ti.After(tj)
-				}
-			case okI:
-				return true
-			case okJ:
-				return false
-			}
-
-			return candidates[i] < candidates[j]
-		})
+		candidates := createPRSourceCandidates(branches, pushTimes, activePRs, repositoryID, targetBranch)
 
 		return CreatePRBranchesLoadedMsg{
 			RepositoryID: repositoryID,
 			Branches:     candidates,
 			PushTimes:    pushTimes,
+			HasMore:      false,
 		}
 	}
+}
+
+func createPRSourceCandidates(branches []string, pushTimes map[string]time.Time, activePRs []api.PullRequest, repositoryID, targetBranch string) []string {
+	normalizedTarget := trimRefPrefix(targetBranch)
+	existing := make(map[string]bool)
+	for _, pr := range activePRs {
+		if pr.Repository.ID != repositoryID {
+			continue
+		}
+		if trimRefPrefix(pr.TargetRefName) != normalizedTarget {
+			continue
+		}
+		existing[trimRefPrefix(pr.SourceRefName)] = true
+	}
+
+	candidates := make([]string, 0, len(branches))
+	seen := make(map[string]bool)
+	for _, branch := range branches {
+		if seen[branch] {
+			continue
+		}
+		seen[branch] = true
+		if branch == normalizedTarget {
+			continue
+		}
+		if existing[branch] {
+			continue
+		}
+		candidates = append(candidates, branch)
+	}
+
+	sortBranchesByPushTime(candidates, pushTimes)
+	return candidates
+}
+
+func sortBranchesByPushTime(branches []string, pushTimes map[string]time.Time) {
+	sort.SliceStable(branches, func(i, j int) bool {
+		ti, okI := pushTimes[branches[i]]
+		tj, okJ := pushTimes[branches[j]]
+		switch {
+		case okI && okJ:
+			if !ti.Equal(tj) {
+				return ti.After(tj)
+			}
+		case okI:
+			return true
+		case okJ:
+			return false
+		}
+
+		return branches[i] < branches[j]
+	})
 }
 
 // createPullRequestWithOptions creates PR and optionally sets auto-complete and approval.

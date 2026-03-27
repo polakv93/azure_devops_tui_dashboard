@@ -383,25 +383,41 @@ func (m Model) renderCreatePRWizard() string {
 	b.WriteString("\n")
 	b.WriteString(m.renderCreatePRStepHeader(PRCreateStepSourceBranch, "2. Source branch"))
 	b.WriteString("\n")
-	if len(m.createPRBranches) == 0 {
+	sourceOptionCount := m.createPRSourceOptionCount()
+	if sourceOptionCount == 0 {
 		b.WriteString(styles.HelpStyle.Render("  (no branches loaded yet)"))
 		b.WriteString("\n")
 	} else {
-		start, end := visibleListWindow(len(m.createPRBranches), m.createPRSelectedSource, maxRows)
+		start, end := visibleListWindow(sourceOptionCount, m.createPRSelectedSource, maxRows)
 		for i := start; i < end; i++ {
-			branch := m.createPRBranches[i]
-			timeHint := ""
-			if pushedAt, ok := m.createPRBranchPushTimes[branch]; ok {
-				timeHint = "  " + styles.HelpStyle.Render("("+pushedAt.Local().Format("2006-01-02 15:04")+")")
-			}
-			line := "  " + branch + timeHint
-			if i == m.createPRSelectedSource && m.createPRStep == PRCreateStepSourceBranch {
-				line = styles.SelectedRowStyle.Render("► " + branch + timeHint)
+			isLoadMoreOption := m.createPRHasMoreBranches && i == len(m.createPRBranches)
+			line := ""
+			if isLoadMoreOption {
+				line = "  Load more branches..."
+				if i == m.createPRSelectedSource && m.createPRStep == PRCreateStepSourceBranch {
+					line = styles.SelectedRowStyle.Render("► Load more branches...")
+				} else {
+					line = styles.HelpStyle.Render(line)
+				}
+			} else {
+				branch := m.createPRBranches[i]
+				timeHint := ""
+				if pushedAt, ok := m.createPRBranchPushTimes[branch]; ok {
+					timeHint = "  " + styles.HelpStyle.Render("("+pushedAt.Local().Format("2006-01-02 15:04")+")")
+				}
+				line = "  " + branch + timeHint
+				if i == m.createPRSelectedSource && m.createPRStep == PRCreateStepSourceBranch {
+					line = styles.SelectedRowStyle.Render("► " + branch + timeHint)
+				}
 			}
 			b.WriteString(line)
 			b.WriteString("\n")
 		}
-		b.WriteString(m.renderCreatePRListHint(len(m.createPRBranches), start, end, maxRows))
+		b.WriteString(m.renderCreatePRListHint(sourceOptionCount, start, end, maxRows))
+		if m.createPRHasMoreBranches {
+			b.WriteString(styles.HelpStyle.Render("  Showing recent branches (20). Select 'Load more branches...' for full list."))
+			b.WriteString("\n")
+		}
 	}
 
 	b.WriteString("\n")
@@ -469,8 +485,11 @@ func (m Model) renderCreatePRWizard() string {
 		b.WriteString("\n")
 	}
 
-	if repo := m.currentCreatePRRepository(); repo != nil && len(m.createPRBranches) > 0 {
-		source := m.createPRBranches[m.createPRSelectedSource]
+	if repo := m.currentCreatePRRepository(); repo != nil {
+		source, ok := m.selectedCreatePRSourceBranch()
+		if !ok {
+			return b.String()
+		}
 		target := m.createPRTargetBranch
 		if target == "" && len(targets) > 0 {
 			target = targets[m.createPRSelectedTarget]

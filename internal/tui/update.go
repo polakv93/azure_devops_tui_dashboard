@@ -104,9 +104,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.createPRError = ""
 		m.createPRBranches = msg.Branches
 		m.createPRBranchPushTimes = msg.PushTimes
-		m.createPRSelectedSource = 0
+		m.createPRHasMoreBranches = msg.HasMore
+		maxSourceIdx := m.createPRSourceOptionCount() - 1
+		if maxSourceIdx < 0 {
+			m.createPRSelectedSource = 0
+		} else if m.createPRSelectedSource > maxSourceIdx {
+			m.createPRSelectedSource = maxSourceIdx
+		}
 		if len(msg.Branches) == 0 {
-			m.createPRError = "no source branches available (all already have active PR or only target branch exists)"
+			if msg.HasMore {
+				m.createPRError = "no recent source branches available; select 'Load more branches...'"
+			} else {
+				m.createPRError = "no source branches available (all already have active PR or only target branch exists)"
+			}
 		}
 		return m, nil
 
@@ -117,10 +127,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if repo == nil || repo.ID != msg.RepositoryID {
 			return m, nil
 		}
-		if len(m.createPRBranches) == 0 || m.createPRSelectedSource < 0 || m.createPRSelectedSource >= len(m.createPRBranches) {
+		source, ok := m.selectedCreatePRSourceBranch()
+		if !ok {
 			return m, nil
 		}
-		if m.createPRBranches[m.createPRSelectedSource] != msg.SourceBranch {
+		if source != msg.SourceBranch {
 			return m, nil
 		}
 
@@ -714,7 +725,7 @@ func (m *Model) handleCreatePRKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.createPRSelectedRepo++
 			}
 		case PRCreateStepSourceBranch:
-			if m.createPRSelectedSource < len(m.createPRBranches)-1 {
+			if m.createPRSelectedSource < m.createPRSourceOptionCount()-1 {
 				m.createPRSelectedSource++
 			}
 		case PRCreateStepTargetBranch:
@@ -769,12 +780,13 @@ func (m *Model) handleCreatePRKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.createPRSelectedRepo = maxIdx
 			}
 		case PRCreateStepSourceBranch:
-			if len(m.createPRBranches) == 0 {
+			sourceOptions := m.createPRSourceOptionCount()
+			if sourceOptions == 0 {
 				m.createPRSelectedSource = 0
 				return m, nil
 			}
 			m.createPRSelectedSource += page
-			if maxIdx := len(m.createPRBranches) - 1; m.createPRSelectedSource > maxIdx {
+			if maxIdx := sourceOptions - 1; m.createPRSelectedSource > maxIdx {
 				m.createPRSelectedSource = maxIdx
 			}
 		case PRCreateStepTargetBranch:
@@ -828,16 +840,30 @@ func (m *Model) handleCreatePREnter() (tea.Model, tea.Cmd) {
 
 		m.createPRTargetBranch = trimRefPrefix(repo.DefaultBranch)
 		m.createPRSelectedTarget = 0
+		m.createPRLoadAllBranches = false
 		m.createPRStep = PRCreateStepSourceBranch
 		m.createPRLoading = true
 		m.createPRError = ""
 		return m, m.loadBranchesForCreatePR()
 
 	case PRCreateStepSourceBranch:
-		if len(m.createPRBranches) == 0 {
+		if m.createPRSourceOptionCount() == 0 {
 			m.createPRError = "no source branch selected"
 			return m, nil
 		}
+		if m.isCreatePRLoadMoreSelected() {
+			m.createPRLoadAllBranches = true
+			m.createPRLoading = true
+			m.createPRError = ""
+			return m, m.loadBranchesForCreatePR()
+		}
+
+		source, ok := m.selectedCreatePRSourceBranch()
+		if !ok {
+			m.createPRError = "source branch not selected"
+			return m, nil
+		}
+
 		m.createPRStep = PRCreateStepTargetBranch
 		m.createPRSelectedTarget = 0
 		m.createPRError = ""
@@ -846,7 +872,6 @@ func (m *Model) handleCreatePREnter() (tea.Model, tea.Cmd) {
 		if repo == nil {
 			return m, nil
 		}
-		source := m.createPRBranches[m.createPRSelectedSource]
 		return m, loadCreatePRDefaults(m.client, m.CurrentProject().Name, repo.ID, source)
 
 	case PRCreateStepTargetBranch:
@@ -881,11 +906,12 @@ func (m *Model) handleCreatePREnter() (tea.Model, tea.Cmd) {
 			m.createPRError = "repository not selected"
 			return m, nil
 		}
-		if len(m.createPRBranches) == 0 || m.createPRSelectedSource < 0 || m.createPRSelectedSource >= len(m.createPRBranches) {
+		source, ok := m.selectedCreatePRSourceBranch()
+		if !ok {
 			m.createPRError = "source branch not selected"
 			return m, nil
 		}
-		source := m.createPRBranches[m.createPRSelectedSource]
+
 		target := m.createPRTargetBranch
 		if target == "" {
 			target = m.selectedCreatePRTargetBranch()
@@ -1048,7 +1074,10 @@ func (m *Model) loadBranchesForCreatePR() tea.Cmd {
 
 	projectName := m.CurrentProject().Name
 	activePRs := m.CurrentPullRequests()
-	return loadCreatePRBranches(m.client, projectName, repo.ID, activePRs, m.createPRTargetBranch)
+	if m.createPRLoadAllBranches {
+		return loadCreatePRBranchesAll(m.client, projectName, repo.ID, activePRs, m.createPRTargetBranch)
+	}
+	return loadCreatePRBranchesRecent(m.client, projectName, repo.ID, activePRs, m.createPRTargetBranch)
 }
 
 // buildCompletionNotificationCmds returns notification commands for watched build definitions.

@@ -77,6 +77,8 @@ type Model struct {
 	createPRSelectedRepo       int
 	createPRBranches           []string
 	createPRBranchPushTimes    map[string]time.Time
+	createPRHasMoreBranches    bool
+	createPRLoadAllBranches    bool
 	createPRSelectedSource     int
 	createPRTargetBranch       string
 	createPRSelectedTarget     int
@@ -125,8 +127,9 @@ type Model struct {
 }
 
 const (
-	createPRMinListRows = 3
-	createPRMaxListRows = 12
+	createPRMinListRows       = 3
+	createPRMaxListRows       = 12
+	createPRRecentBranchLimit = 20
 )
 
 const buildLogChunkSize = 500
@@ -467,6 +470,8 @@ func (m *Model) resetCreatePRFlow() {
 	m.createPRSelectedRepo = 0
 	m.createPRBranches = nil
 	m.createPRBranchPushTimes = make(map[string]time.Time)
+	m.createPRHasMoreBranches = false
+	m.createPRLoadAllBranches = false
 	m.createPRSelectedSource = 0
 	m.createPRTargetBranch = ""
 	m.createPRSelectedTarget = 0
@@ -482,6 +487,25 @@ func (m *Model) resetCreatePRFlow() {
 	m.createPRTitleAuto = true
 	m.createPRDescriptionAuto = true
 	m.createPREditField = PRCreateEditFieldNone
+}
+
+func (m Model) createPRSourceOptionCount() int {
+	count := len(m.createPRBranches)
+	if m.createPRHasMoreBranches {
+		count++
+	}
+	return count
+}
+
+func (m Model) isCreatePRLoadMoreSelected() bool {
+	return m.createPRHasMoreBranches && m.createPRSelectedSource == len(m.createPRBranches)
+}
+
+func (m Model) selectedCreatePRSourceBranch() (string, bool) {
+	if m.createPRSelectedSource < 0 || m.createPRSelectedSource >= len(m.createPRBranches) {
+		return "", false
+	}
+	return m.createPRBranches[m.createPRSelectedSource], true
 }
 
 func trimRefPrefix(ref string) string {
